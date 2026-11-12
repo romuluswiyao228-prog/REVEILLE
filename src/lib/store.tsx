@@ -83,8 +83,6 @@ interface Ctx extends Persisted {
   setProfile: (patch: Partial<Profile>) => void;
   addHistory: (h: Omit<HistoryEntry, "id" | "ts" | "date">) => void;
   setPostponed: (p: Postponed | null) => void;
-  exportData: () => string;
-  importData: (raw: string) => boolean;
   reset: () => void;
 }
 
@@ -138,35 +136,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return { ...d, history: [{ ...h, id: uid(), ts: now.getTime(), date: dateKey(now) }, ...d.history] };
         }),
       setPostponed: (p) => setData((d) => ({ ...d, postponed: p })),
-      exportData: () =>
-        JSON.stringify({ app: "wakefit", version: 1, exportedAt: Date.now(), profile: data.profile, alarms: data.alarms, sessions: data.history }, null, 2),
-      importData: (raw) => {
-        try {
-          const o = JSON.parse(raw) as { app?: string; profile?: { name?: unknown }; alarms?: unknown; sessions?: unknown; history?: unknown };
-          if (o.app !== "wakefit" || !Array.isArray(o.alarms)) return false;
-          const sessions = (Array.isArray(o.sessions) ? o.sessions : Array.isArray(o.history) ? o.history : null) as HistoryEntry[] | null;
-          if (!sessions) return false;
-          const valid = sessions.filter(
-            (h) =>
-              h &&
-              typeof h.reps === "number" &&
-              typeof h.target === "number" &&
-              typeof h.exercise === "string" &&
-              (h.exercise === "pushup" || h.exercise === "squat") &&
-              typeof h.date === "string",
-          );
-          if (valid.length !== sessions.length) return false;
-          setData((d) => ({
-            ...d,
-            profile: { name: typeof o.profile?.name === "string" ? o.profile.name : "" },
-            alarms: o.alarms as Alarm[],
-            history: valid.map((h) => ({ ...h, id: h.id || uid(), ts: h.ts ?? Date.now() })),
-          }));
-          return true;
-        } catch {
-          return false;
-        }
-      },
       reset: () => {
         void clearCustomSounds();
         setData((d) => ({

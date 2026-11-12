@@ -1,4 +1,3 @@
-import { useRef } from "react";
 import { Card, Field, Header, Icon, Segmented, Toggle } from "../components/ui";
 import { useStore } from "../lib/store";
 import { SOUNDS } from "./AlarmEditor";
@@ -7,25 +6,7 @@ import type { TKey } from "../lib/i18n";
 import { cn } from "../utils/cn";
 
 export default function Settings({ onPrivacy, onPremium }: { onPrivacy: () => void; onPremium: () => void }) {
-  const { t, settings, setSettings, profile, setProfile, exportData, importData, reset } = useStore();
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const doExport = () => {
-    const blob = new Blob([exportData()], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "wakefit-backup.json";
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const doImport = async (file: File) => {
-    const raw = await file.text();
-    if (!confirm(t("importConfirm"))) return;
-    alert(importData(raw) ? t("importDone") : t("importInvalid"));
-    if (fileRef.current) fileRef.current.value = "";
-  };
+  const { t, settings, setSettings, profile, setProfile, reset } = useStore();
 
   return (
     <div>
@@ -145,29 +126,6 @@ export default function Settings({ onPrivacy, onPremium }: { onPrivacy: () => vo
             placeholder={t("profileNamePh")}
             className="min-h-14 w-full rounded-2xl border border-[var(--line)] bg-[var(--card)] px-4 text-base font-semibold outline-none focus:border-[var(--accent)]"
           />
-        </Field>
-
-        <Field label={t("dataTitle")}>
-          <div className="space-y-2">
-            <button onClick={doExport} className="flex min-h-14 w-full items-center gap-3 rounded-2xl border border-[var(--line)] bg-[var(--card)] px-4 text-start font-bold">
-              <Icon name="download" className="text-[var(--accent)]" />
-              <span className="flex-1">{t("exportData")}</span>
-            </button>
-            <button onClick={() => fileRef.current?.click()} className="flex min-h-14 w-full items-center gap-3 rounded-2xl border border-[var(--line)] bg-[var(--card)] px-4 text-start font-bold">
-              <Icon name="upload" className="text-[var(--accent)]" />
-              <span className="flex-1">{t("importData")}</span>
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="application/json,.json"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void doImport(f);
-              }}
-            />
-          </div>
         </Field>
 
         <button onClick={onPrivacy} className="flex min-h-14 w-full items-center gap-3 rounded-2xl border border-[var(--line)] bg-[var(--card)] px-4 text-start font-bold">

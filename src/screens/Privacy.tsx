@@ -15,7 +15,16 @@ export default function Privacy({ onClose }: { onClose: () => void }) {
         {sections.map((n) => (
           <div key={n} className="rounded-3xl border border-[var(--line)] bg-[var(--card)] p-5">
             <h2 className="text-lg font-extrabold">{t(`pv_h${n}` as TKey)}</h2>
-            <p className="mt-2 leading-relaxed text-[var(--muted)]">{t(`pv_p${n}` as TKey)}</p>
+            {n === 5 ? (
+              <p className="mt-2 leading-relaxed text-[var(--muted)]">
+                {t("pv_p5")}{" "}
+                <a href="mailto:romuluswiyao228@gmail.com" className="font-bold text-[var(--accent)]" dir="ltr">
+                  romuluswiyao228@gmail.com
+                </a>
+              </p>
+            ) : (
+              <p className="mt-2 leading-relaxed text-[var(--muted)]">{t(`pv_p${n}` as TKey)}</p>
+            )}
           </div>
         ))}
       </div>

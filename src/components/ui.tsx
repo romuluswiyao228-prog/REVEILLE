@@ -57,18 +57,6 @@ const paths: Record<string, ReactNode> = {
     </>
   ),
   close: <path d="M6 6l12 12M18 6L6 18" />,
-  download: (
-    <>
-      <path d="M12 4v11M7 11l5 5 5-5" />
-      <path d="M4 19h16" />
-    </>
-  ),
-  upload: (
-    <>
-      <path d="M12 15V4M7 9l5-5 5 5" />
-      <path d="M4 19h16" />
-    </>
-  ),
 };
 
 export function Icon({ name, className, size = 22 }: { name: keyof typeof paths | string; className?: string; size?: number }) {
