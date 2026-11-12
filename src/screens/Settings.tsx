@@ -1,9 +1,50 @@
+import { useEffect, useState } from "react";
 import { Card, Field, Header, Icon, Segmented, Toggle } from "../components/ui";
 import { useStore } from "../lib/store";
 import { SOUNDS } from "./AlarmEditor";
 import { previewSound } from "../lib/audio";
+import {
+  isNative, pendingNotifications, notificationPermission, exactAlarmStatus,
+  openExactAlarmSettings, scheduleTestNotification, type PendingInfo,
+} from "../lib/nativeAlarms";
 import type { TKey } from "../lib/i18n";
 import { cn } from "../utils/cn";
+
+function NativeDiagnostics({ t }: { t: (k: TKey) => string }) {
+  const [notif, setNotif] = useState("…");
+  const [exact, setExact] = useState("…");
+  const [pending, setPending] = useState<PendingInfo[]>([]);
+  const refresh = async () => {
+    setNotif(await notificationPermission());
+    setExact(await exactAlarmStatus());
+    setPending(await pendingNotifications());
+  };
+  useEffect(() => {
+    void refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <Field label={t("diagTitle")}>
+      <Card className="!p-4 text-sm">
+        <div className="flex justify-between"><span className="text-[var(--muted)]">{t("diagNotifPerm")}</span><b>{notif}</b></div>
+        <div className="mt-1 flex justify-between"><span className="text-[var(--muted)]">{t("diagExactPerm")}</span><b>{exact}</b></div>
+        <div className="mt-3 text-[var(--muted)]">{t("diagPending")} : {pending.length}</div>
+        {pending.slice(0, 8).map((p) => (
+          <div key={p.id} className="tnum text-xs" dir="ltr">#{p.id} · {p.at ? new Date(p.at).toLocaleString() : "-"}</div>
+        ))}
+        <div className="mt-3 flex gap-2">
+          <button onClick={() => void scheduleTestNotification()} className="flex-1 rounded-xl bg-[var(--accent)] px-3 py-2.5 text-xs font-bold text-[var(--accent-fg)]">
+            {t("testAlarmBtn")}
+          </button>
+          <button onClick={() => void openExactAlarmSettings().then(refresh)} className="flex-1 rounded-xl border border-[var(--line)] px-3 py-2.5 text-xs font-bold">
+            {t("allowExactBtn")}
+          </button>
+        </div>
+        <p className="mt-3 text-xs leading-snug text-[var(--muted)]">{t("diagHelp")}</p>
+      </Card>
+    </Field>
+  );
+}
 
 export default function Settings({ onPrivacy, onPremium }: { onPrivacy: () => void; onPremium: () => void }) {
   const { t, settings, setSettings, profile, setProfile, reset } = useStore();
@@ -127,6 +168,8 @@ export default function Settings({ onPrivacy, onPremium }: { onPrivacy: () => vo
             className="min-h-14 w-full rounded-2xl border border-[var(--line)] bg-[var(--card)] px-4 text-base font-semibold outline-none focus:border-[var(--accent)]"
           />
         </Field>
+
+        {isNative() && <NativeDiagnostics t={t} />}
 
         <button onClick={onPrivacy} className="flex min-h-14 w-full items-center gap-3 rounded-2xl border border-[var(--line)] bg-[var(--card)] px-4 text-start font-bold">
           <Icon name="shield" className="text-[var(--ok)]" />

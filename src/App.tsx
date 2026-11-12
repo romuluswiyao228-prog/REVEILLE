@@ -17,6 +17,9 @@ import Settings from "./screens/Settings";
 import Paywall from "./screens/Paywall";
 import Privacy from "./screens/Privacy";
 import { stopAlarmSound, unlockAudio } from "./lib/audio";
+import {
+  isNative, initNativeAlarms, startupChecks, resyncAlarms, setNativeAlarmsRef, firedOnce,
+} from "./lib/nativeAlarms";
 import { computeBadges, computeStats, dateKey } from "./lib/stats";
 import type { HistoryEntry } from "./lib/types";
 import { cn } from "./utils/cn";
@@ -41,8 +44,22 @@ function Shell() {
   const fired = useRef<string>("");
   const missionStart = useRef(0);
 
+  const alarmsRef = useRef(alarms);
+  alarmsRef.current = alarms;
+
+  const openBlock = (alarmId: string) => {
+    if (alarmsRef.current.some((a) => a.id === alarmId)) setOverlay({ k: "block", alarmId });
+  };
+  const nativeHooks = useRef({
+    onNotificationTap: openBlock,
+    onMissedAlarm: openBlock,
+    onOneShotFired: (id: string) => toggleAlarm(id),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }).current;
+
   // Planificateur (démo web : fonctionne tant que l'onglet est ouvert).
-  // Dans l'app Flutter, c'est AlarmManager (Android) / notifications locales (iOS) qui prennent le relais.
+  // En mode natif, SEUL le système déclenche l'alarme (notification locale) :
+  // le tick ne sert plus qu'aux reports (snooze / problème).
   useEffect(() => {
     const tick = () => {
       const o = overlayRef.current;
@@ -56,6 +73,7 @@ function Shell() {
         if (alarms.some((a) => a.id === id)) setOverlay({ k: "block", alarmId: id });
         return;
       }
+      if (isNative()) return; // alarmes natives : pas de déclenchement JS
       for (const a of alarms) {
         if (!a.enabled || a.time !== hhmm) continue;
         if (a.days.length > 0 && !a.days.includes(now.getDay())) continue;
@@ -70,6 +88,32 @@ function Shell() {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [alarms, postponed, setPostponed, toggleAlarm]);
+
+  // Mode natif : programme les notifications système, écoute les taps, règle des 30 min.
+  useEffect(() => {
+    if (!isNative()) return;
+    setNativeAlarmsRef(alarms);
+    void initNativeAlarms(nativeHooks);
+    void startupChecks(alarms, history, nativeHooks);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Chaque création/modification/activation/désactivation/suppression → reprogramme tout.
+  const firstSync = useRef(true);
+  useEffect(() => {
+    if (!isNative()) return;
+    setNativeAlarmsRef(alarms);
+    if (firstSync.current) {
+      firstSync.current = false; // déjà synchronisé par startupChecks
+      return;
+    }
+    void resyncAlarms(alarms);
+    for (const id of firedOnce) {
+      firedOnce.delete(id);
+      toggleAlarm(id); // alarme "une seule fois" qui a sonné app fermée → désactivée
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alarms]);
 
   // Restaure une alarme bloquante en cours après rechargement de la page.
   useEffect(() => {
