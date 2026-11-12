@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Icon, ProgressRing } from "../components/ui";
+import { SkeletonLayer, paintSkeleton } from "../components/SkeletonOverlay";
 import { useStore } from "../lib/store";
-import { RepCounter, buildConfig, type Feedback, type PoseSample } from "../lib/repCounter";
+import { RepCounter, buildConfig, type Feedback } from "../lib/repCounter";
 import type { Skeleton } from "../lib/poseSim";
 import { detectPose, getPoseLandmarker } from "../lib/poseDetector";
 import type { PoseLandmarker } from "@mediapipe/tasks-vision";
@@ -10,13 +11,18 @@ import { clearActiveAlarm, loadActiveAlarm, saveActiveAlarm } from "../lib/activ
 import type { Alarm } from "../lib/types";
 import { cn } from "../utils/cn";
 
-const LINKS: [keyof Skeleton, keyof Skeleton][] = [
-  ["shoulder", "elbow"],
-  ["elbow", "wrist"],
-  ["shoulder", "hip"],
-  ["hip", "knee"],
-  ["knee", "ankle"],
-];
+type Phase = "unknown" | "up" | "down";
+
+interface UiState {
+  feedback: Feedback;
+  phase: Phase;
+  visible: boolean;
+}
+
+const CAM_CONSTRAINTS: MediaStreamConstraints = {
+  video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { max: 30 } },
+  audio: false,
+};
 
 export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone: (reps: number, durationSec: number) => void }) {
   const { t, settings } = useStore();
@@ -32,21 +38,24 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
   }, [alarm.exercise, alarm.difficulty, settings.sensitivity, settings.strict]);
 
   const [count, setCount] = useState(initialReps);
-  const [feedback, setFeedback] = useState<Feedback>("out_of_frame");
-  const [sk, setSk] = useState<Skeleton | null>(null);
-  const [visible, setVisible] = useState(true);
+  const [ui, setUi] = useState<UiState>({ feedback: "out_of_frame", phase: "unknown", visible: true });
+  const uiRef = useRef(ui);
   const [elapsed, setElapsed] = useState(0);
   const [camState, setCamState] = useState<"on" | "error">("on");
   const [done, setDone] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const DEBUG = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug");
-  const [dbg, setDbg] = useState({ angle: 0, phase: "-", side: "-" });
+  const [dbg, setDbg] = useState({ fps: 0, angle: 0, phase: "-", side: "-" });
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<PoseLandmarker | null>(null);
+  const skelG = useRef<SVGGElement>(null);
   const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
   const doneRef = useRef(false);
   const elapsedRef = useRef(0);
+  const camStateRef = useRef(camState);
+  camStateRef.current = camState;
+  const lastVideoTime = useRef(-1);
 
   const target = alarm.reps;
   const remaining = Math.max(0, target - count);
@@ -58,7 +67,7 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
 
   const startCamera = useCallback(async () => {
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+      const s = await navigator.mediaDevices.getUserMedia(CAM_CONSTRAINTS);
       streamRef.current = s;
       if (videoRef.current) {
         videoRef.current.srcObject = s;
@@ -70,16 +79,30 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
     }
   }, []);
 
-  // Sonnerie en boucle à volume max + vibration + état persisté
+  // Sonnerie en boucle à volume max + vibration + état persisté.
+  // Caméra et modèle de pose chargés en parallèle, avec préchauffage par une
+  // inférence à blanc dès que les deux sont prêts.
   useEffect(() => {
     startAlarmSound(alarm.sound, 1);
     const check = setTimeout(() => setBlocked(!audioRunning()), 400);
     const clock = setInterval(() => setElapsed((e) => e + 1), 1000);
     const vib = setInterval(() => vibrate([400, 200, 400]), 1500);
     saveActiveAlarm({ alarmId: alarm.id, repsDone: initialReps, startedAt: startedAt.current });
-    void startCamera();
-    void getPoseLandmarker().then((l) => {
-      detectorRef.current = l;
+    void Promise.all([
+      startCamera(),
+      getPoseLandmarker().then((l) => {
+        detectorRef.current = l;
+      }),
+    ]).then(() => {
+      const v = videoRef.current;
+      const d = detectorRef.current;
+      if (v && v.readyState >= 2 && d) {
+        try {
+          d.detectForVideo(v, performance.now());
+        } catch {
+          /* préchauffage best-effort */
+        }
+      }
     });
     return () => {
       clearTimeout(check);
@@ -120,57 +143,91 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
 
   elapsedRef.current = elapsed;
 
-  // Détection + comptage : uniquement de la vraie pose (caméra), jamais le simulateur.
+  // Met à jour l'état React uniquement quand quelque chose change vraiment.
+  const pushUi = (feedback: Feedback, phase: Phase, visible: boolean) => {
+    const cur = uiRef.current;
+    if (cur.feedback === feedback && cur.phase === phase && cur.visible === visible) return;
+    const next = { feedback, phase, visible };
+    uiRef.current = next;
+    setUi(next);
+  };
+
+  // Détection + comptage : une itération par NOUVELLE frame vidéo.
+  // Le squelette est peint en DOM impératif ; React n'est re-rendu que
+  // quand feedback/phase/visibilité changent réellement.
   useEffect(() => {
     let raf = 0;
-    const t0 = performance.now();
-    let lastVisible = true;
+    let frames = 0;
+    let fpsT0 = performance.now();
+    let fps = 0;
+    let dbgT = 0;
     const loop = () => {
       if (doneRef.current) return;
-      const t = performance.now() - t0;
+      const now = performance.now();
+      // Timestamp absolu et monotone : detectForVideo l'exige (warm-up inclus).
+      const t = now;
+      frames++;
+      if (now - fpsT0 >= 500) {
+        fps = Math.round((frames * 1000) / (now - fpsT0));
+        frames = 0;
+        fpsT0 = now;
+      }
+      raf = requestAnimationFrame(loop);
+
       const video = videoRef.current;
       const detector = detectorRef.current;
+      // Ne traite que les frames réellement nouvelles.
+      if (!video || video.readyState < 2 || video.currentTime === lastVideoTime.current) return;
+      lastVideoTime.current = video.currentTime;
+
       let skel: Skeleton | null = null;
       let sideUsed = "-";
-      const sample: PoseSample = { angle: 0, confidence: 0, aligned: false, t };
-      if (camState === "on" && detector && video && video.readyState >= 2) {
+      let angle = 0;
+      if (camStateRef.current === "on" && detector) {
         const d = detectPose(detector, video, t, alarm.exercise);
         if (d) {
           skel = d.sk;
           sideUsed = d.side;
-          Object.assign(sample, d.sample);
+          angle = d.sample.angle;
+          const rep = counter.update(d.sample);
+          paintSkeleton(skelG.current, skel, uiColor(counter.feedback), d.sample.confidence >= counter.cfg.minConfidence ? 1 : 0.25);
+          if (rep) {
+            setCount(counter.count);
+            saveActiveAlarm({ alarmId: alarm.id, repsDone: counter.count, startedAt: startedAt.current });
+            playRepTick();
+            vibrate(25 + Math.round((counter.count / target) * 150));
+            if (counter.count >= target) {
+              doneRef.current = true;
+              stopAlarmSound();
+              stopCamera();
+              clearActiveAlarm();
+              void wakeLockRef.current?.release().catch(() => {});
+              setDone(true);
+              return;
+            }
+          }
+          pushUi(counter.feedback, counter.phase, d.sample.confidence >= counter.cfg.minConfidence);
+        } else {
+          paintSkeleton(skelG.current, null, "", 0);
+          counter.update(null);
+          pushUi(counter.feedback, counter.phase, false);
         }
+      } else {
+        // Caméra pas encore active : état vide, rien n'est compté.
+        paintSkeleton(skelG.current, null, "", 0);
+        counter.update(null);
+        pushUi(counter.feedback, counter.phase, false);
       }
-      const rep = counter.update(sample);
-      setSk(skel);
-      setFeedback(counter.feedback);
-      if (DEBUG) setDbg({ angle: Math.round(sample.angle), phase: counter.phase, side: sideUsed });
-      const vis = sample.confidence >= counter.cfg.minConfidence;
-      if (vis !== lastVisible) {
-        lastVisible = vis;
-        setVisible(vis);
+      // Debug : setState throttlé (~5/s), pas à chaque frame.
+      if (DEBUG && now - dbgT > 200) {
+        dbgT = now;
+        setDbg({ fps, angle: Math.round(angle), phase: counter.phase, side: sideUsed });
       }
-      if (rep) {
-        setCount(counter.count);
-        saveActiveAlarm({ alarmId: alarm.id, repsDone: counter.count, startedAt: startedAt.current });
-        playRepTick();
-        vibrate(25 + Math.round((counter.count / target) * 150));
-        if (counter.count >= target) {
-          doneRef.current = true;
-          stopAlarmSound();
-          stopCamera();
-          clearActiveAlarm();
-          void wakeLockRef.current?.release().catch(() => {});
-          setDone(true);
-          return;
-        }
-      }
-      raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [counter, camState, alarm.exercise, alarm.id, target]);
+  }, [counter, alarm.exercise, alarm.id, target]);
 
   const enableSound = () => {
     startAlarmSound(alarm.sound, 1);
@@ -179,9 +236,9 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
 
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
-  const good = feedback === "good_rep" || feedback === "ready";
-  const bad = feedback === "out_of_frame" || feedback === "bad_position";
-  const fbColor = bad ? "var(--bad)" : feedback === "good_rep" ? "var(--ok)" : good ? "var(--fg)" : "var(--warn)";
+  const good = ui.feedback === "good_rep" || ui.feedback === "ready";
+  const bad = ui.feedback === "out_of_frame" || ui.feedback === "bad_position";
+  const fbColor = bad ? "var(--bad)" : ui.feedback === "good_rep" ? "var(--ok)" : good ? "var(--fg)" : "var(--warn)";
 
   if (done) {
     return (
@@ -231,21 +288,12 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
           />
         )}
         <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" className="absolute inset-0 h-full w-full">
-          {sk && (
-            <g opacity={visible ? 1 : 0.25} style={{ transition: "opacity .2s" }}>
-              {LINKS.map(([a, b]) => (
-                <line key={a + b} x1={sk[a].x} y1={sk[a].y} x2={sk[b].x} y2={sk[b].y} stroke={fbColor} strokeWidth={1.6} strokeLinecap="round" />
-              ))}
-              {(Object.keys(sk) as (keyof Skeleton)[]).map((k) => (
-                <circle key={k} cx={sk[k].x} cy={sk[k].y} r={k === "elbow" || k === "knee" ? 2.4 : 1.8} fill={k === "elbow" || k === "knee" ? "var(--accent)" : "#fff"} />
-              ))}
-            </g>
-          )}
+          <SkeletonLayer ref={skelG} />
         </svg>
 
         {DEBUG && (
           <div className="absolute left-3 top-3 z-10 rounded-lg bg-black/70 px-2 py-1 font-mono text-[10px] font-bold text-[var(--ok)]">
-            coude {dbg.angle}° · {dbg.phase} · {dbg.side}
+            {dbg.fps}fps · coude {dbg.angle}° · {dbg.phase} · {dbg.side}
           </div>
         )}
         {blocked && (
@@ -264,7 +312,7 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
 
         {/* message temps réel */}
         <div className="absolute inset-x-3 bottom-3 rounded-2xl bg-black/70 px-4 py-2.5 text-center text-lg font-extrabold backdrop-blur" style={{ color: fbColor }} role="status" aria-live="polite">
-          {t(`fb_${feedback}`)}
+          {t(`fb_${ui.feedback}`)}
         </div>
       </div>
       <p className="relative px-6 pt-2 text-center text-[11px] font-semibold text-[var(--muted)]">{t("poseTip")}</p>
@@ -286,4 +334,12 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
       </div>
     </div>
   );
+}
+
+function uiColor(feedback: Feedback): string {
+  const bad = feedback === "out_of_frame" || feedback === "bad_position";
+  if (bad) return "var(--bad)";
+  if (feedback === "good_rep") return "var(--ok)";
+  if (feedback === "ready") return "var(--fg)";
+  return "var(--warn)";
 }

@@ -59,8 +59,7 @@ const ramp = (from, to, n) => Array.from({ length: n }, (_, i) => from + ((to - 
   check("descente partielle", reps, 0);
 }
 
-// 5. Frame avec point clé faible en pleine descente -> reset du cycle en cours.
-//    La demi-cycle interrompue ne compte pas, mais un cycle complet suivant compte.
+// 5. Perte de points : grâce de 10 frames (le cycle survit), reset au-delà.
 {
   const c = new RepCounter(cfg);
   let t = 0;
@@ -69,9 +68,26 @@ const ramp = (from, to, n) => Array.from({ length: n }, (_, i) => from + ((to - 
     t += 33;
     if (c.update(sample(angle, t, 0.92, kp))) reps++;
   };
+  const bad = { ...KP, elbow: 0.2 }; // sous le seuil 0.3 des pompes
   const cycle = [...hold(170, 90), ...ramp(170, 80, 25), ...hold(80, 15), ...ramp(80, 172, 25), ...hold(172, 60)];
-  cycle.forEach((a, i) => push(a, i === 100 ? { ...KP, elbow: 0.4 } : KP));
-  check("cycle interrompu ne compte pas", reps, 0);
+  // 5 frames poubelles en pleine descente -> grâce, le cycle compte quand même
+  cycle.forEach((a, i) => push(a, i >= 95 && i < 100 ? bad : KP));
+  check("grâce 5 frames", reps, 1);
+}
+{
+  const c = new RepCounter(cfg);
+  let t = 0;
+  let reps = 0;
+  const push = (angle, kp = KP) => {
+    t += 33;
+    if (c.update(sample(angle, t, 0.92, kp))) reps++;
+  };
+  const bad = { ...KP, elbow: 0.2 }; // sous le seuil 0.3 des pompes
+  for (const a of hold(170, 90)) push(a);
+  for (const a of ramp(170, 80, 25)) push(a);
+  for (let i = 0; i < 15; i++) push(80, bad); // >10 frames perdues -> reset
+  check("phase reset après 10+ frames", c.phase, "unknown");
+  const cycle = [...hold(170, 60), ...ramp(170, 80, 25), ...hold(80, 15), ...ramp(80, 172, 25), ...hold(172, 60)];
   for (const a of cycle) push(a);
   check("cycle complet après reset", reps, 1);
 }
@@ -99,7 +115,7 @@ const ramp = (from, to, n) => Array.from({ length: n }, (_, i) => from + ((to - 
   const c = new RepCounter(cfg);
   let t = 0;
   let reps = 0;
-  for (const a of hold(170, 100)) { t += 33; if (c.update(sample(a, t, 0.3))) reps++; }
+  for (const a of hold(170, 100)) { t += 33; if (c.update(sample(a, t, 0.1))) reps++; }
   check("confiance faible", reps, 0);
   check("feedback hors cadre", c.feedback, "out_of_frame");
 }

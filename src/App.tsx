@@ -8,6 +8,7 @@ import AlarmEditor from "./screens/AlarmEditor";
 import Ringing from "./screens/Ringing";
 import BlockingAlarm from "./screens/BlockingAlarm";
 import { clearActiveAlarm, loadActiveAlarm } from "./lib/activeAlarm";
+import { getPoseLandmarker } from "./lib/poseDetector";
 import Mission, { type MissionResult } from "./screens/Mission";
 import Success, { type SuccessData } from "./screens/Success";
 import History from "./screens/History";
@@ -215,6 +216,12 @@ function Shell() {
 }
 
 export default function App() {
+  // Précharge le modèle de pose ( WASM + .task locaux, précachés par le SW )
+  // pour que la détection soit prête dès la première alarme.
+  useEffect(() => {
+    void getPoseLandmarker();
+  }, []);
+
   return (
     <StoreProvider>
       <div className="flex h-full items-center justify-center md:bg-black/40 md:p-4">

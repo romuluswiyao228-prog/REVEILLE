@@ -13,10 +13,7 @@ export interface PoseDetection {
 
 let landmarkerPromise: Promise<PoseLandmarker | null> | null = null;
 
-const MODELS = [
-  "/mediapipe/models/pose_landmarker_full.task",
-  "/mediapipe/models/pose_landmarker_lite.task",
-];
+const MODELS = ["/mediapipe/models/pose_landmarker_lite.task"];
 
 export function getPoseLandmarker(): Promise<PoseLandmarker | null> {
   if (!landmarkerPromise) {
@@ -102,7 +99,7 @@ export function detectPose(
     const useLeft = lScore >= rScore;
     const best = Math.max(lScore, rScore);
     // Côté inexploitable : on ne considère pas la personne comme détectée.
-    if (best < 0.5) return null;
+    if (best < 0.3) return null;
 
     const sIdx = useLeft ? L_SHOULDER : R_SHOULDER;
     const eIdx = useLeft ? L_ELBOW : R_ELBOW;
@@ -112,23 +109,17 @@ export function detectPose(
 
     const angle = angleAt(pt(lms[sIdx]), pt(lms[eIdx]), pt(lms[wIdx]));
 
-    // Confiance par point clé : uniquement le côté choisi pour les bras,
-    // hanche = min des deux (nécessaire au contrôle d'horizontalité).
+    // Confiance : uniquement les 3 points du côté choisi (pas de hanche,
+    // aucune vérification d'alignement du corps).
     const keypoints: Record<string, number> = {
       shoulder: vis(lms[sIdx]),
       elbow: vis(lms[eIdx]),
       wrist: vis(lms[wIdx]),
-      hip: minVis(lms, L_HIP, R_HIP),
     };
-    const confidence = Object.values(keypoints).reduce((a, b) => a + b, 0) / 4;
+    const confidence = Object.values(keypoints).reduce((a, b) => a + b, 0) / 3;
 
-    // Corps horizontal : angle épaule-hanche-cheville > 150°,
-    // ou épaule et hanche à une hauteur proche dans l'image.
     const shoulder = mid(lms[L_SHOULDER], lms[R_SHOULDER]);
     const hip = mid(lms[L_HIP], lms[R_HIP]);
-    const ankle = mid(lms[L_ANKLE], lms[R_ANKLE]);
-    const bodyAng = angleAt(shoulder, hip, ankle);
-    const bodyOk = bodyAng > 150 || Math.abs(shoulder.y - hip.y) < 0.15;
 
     const sk: Skeleton = {
       shoulder: { x: (1 - shoulder.x) * 100, y: shoulder.y * 100 },
@@ -140,7 +131,7 @@ export function detectPose(
     };
     return {
       sk,
-      sample: { angle, confidence, aligned: bodyOk, t, keypoints, bodyOk },
+      sample: { angle, confidence, aligned: true, t, keypoints },
       side: useLeft ? "left" : "right",
     };
   }
@@ -149,7 +140,7 @@ export function detectPose(
   const lScore = sideScore(lms, L_HIP, L_KNEE, L_ANKLE);
   const rScore = sideScore(lms, R_HIP, R_KNEE, R_ANKLE);
   const useLeft = lScore >= rScore;
-  if (Math.max(lScore, rScore) < 0.5) return null;
+  if (Math.max(lScore, rScore) < 0.3) return null;
   const i = useLeft ? 0 : 1;
 
   const keypoints: Record<string, number> = {
@@ -172,7 +163,7 @@ export function detectPose(
   };
   return {
     sk,
-    sample: { angle, confidence, aligned: true, t, keypoints, bodyOk: true },
+    sample: { angle, confidence, aligned: true, t, keypoints },
     side: useLeft ? "left" : "right",
   };
 }

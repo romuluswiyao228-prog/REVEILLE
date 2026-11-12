@@ -74,7 +74,10 @@ export default function Mission({
   // Caméra frontale — demandée uniquement ici (au moment nécessaire), flux jamais enregistré.
   const startCamera = useCallback(async () => {
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+      const s = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { max: 30 } },
+        audio: false,
+      });
       streamRef.current = s;
       if (videoRef.current) {
         videoRef.current.srcObject = s;
