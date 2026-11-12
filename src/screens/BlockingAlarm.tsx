@@ -45,7 +45,7 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
   const [done, setDone] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const DEBUG = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug");
-  const [dbg, setDbg] = useState({ fps: 0, angle: 0, phase: "-", side: "-" });
+  const [dbg, setDbg] = useState({ fps: 0, angle: 0, phase: "-", side: "-", lock: false });
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<PoseLandmarker | null>(null);
@@ -189,7 +189,7 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
           skel = d.sk;
           sideUsed = d.side;
           angle = d.sample.angle;
-          const rep = counter.update(d.sample);
+          const rep = counter.update(d.sample, t);
           paintSkeleton(skelG.current, skel, uiColor(counter.feedback), d.sample.confidence >= counter.cfg.minConfidence ? 1 : 0.25);
           if (rep) {
             setCount(counter.count);
@@ -209,19 +209,19 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
           pushUi(counter.feedback, counter.phase, d.sample.confidence >= counter.cfg.minConfidence);
         } else {
           paintSkeleton(skelG.current, null, "", 0);
-          counter.update(null);
+          counter.update(null, t);
           pushUi(counter.feedback, counter.phase, false);
         }
       } else {
         // Caméra pas encore active : état vide, rien n'est compté.
         paintSkeleton(skelG.current, null, "", 0);
-        counter.update(null);
+        counter.update(null, t);
         pushUi(counter.feedback, counter.phase, false);
       }
       // Debug : setState throttlé (~5/s), pas à chaque frame.
       if (DEBUG && now - dbgT > 200) {
         dbgT = now;
-        setDbg({ fps, angle: Math.round(angle), phase: counter.phase, side: sideUsed });
+        setDbg({ fps, angle: Math.round(angle), phase: counter.phase, side: sideUsed, lock: counter.locked });
       }
     };
     raf = requestAnimationFrame(loop);
@@ -247,6 +247,9 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
           <Icon name="check" size={56} />
         </div>
         <div className="text-4xl font-black text-[var(--fg)]">{t("blockDoneTitle")}</div>
+        <div className="text-lg font-bold text-[var(--muted)]">
+          {alarm.exercise === "pushup" ? "💪" : "🦵"} {t(alarm.exercise)} · {target} {t("repsUnit")}
+        </div>
         <div className="tnum text-lg font-bold text-[var(--muted)]" dir="ltr">
           {mm}:{ss}
         </div>
@@ -293,7 +296,7 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
 
         {DEBUG && (
           <div className="absolute left-3 top-3 z-10 rounded-lg bg-black/70 px-2 py-1 font-mono text-[10px] font-bold text-[var(--ok)]">
-            {dbg.fps}fps · coude {dbg.angle}° · {dbg.phase} · {dbg.side}
+            {dbg.fps}fps · {alarm.exercise} · {dbg.angle}° · {dbg.phase} · {dbg.side} · lock {dbg.lock ? "yes" : "no"}
           </div>
         )}
         {blocked && (
@@ -312,7 +315,7 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
 
         {/* message temps réel */}
         <div className="absolute inset-x-3 bottom-3 rounded-2xl bg-black/70 px-4 py-2.5 text-center text-lg font-extrabold backdrop-blur" style={{ color: fbColor }} role="status" aria-live="polite">
-          {t(`fb_${ui.feedback}`)}
+          {t(ui.feedback === "get_in_position" ? (alarm.exercise === "squat" ? "fb_squatPos" : "fb_pushupPos") : `fb_${ui.feedback}`)}
         </div>
       </div>
       <p className="relative px-6 pt-2 text-center text-[11px] font-semibold text-[var(--muted)]">{t("poseTip")}</p>
@@ -321,7 +324,7 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
       <div className="relative flex flex-1 flex-col items-center justify-center gap-4 px-5 py-4">
         <div key={remaining} className="pop text-center">
           <div className="text-sm font-bold uppercase tracking-widest text-[var(--muted)]">
-            {t("blockRepsLeft", { x: remaining, n: target })}
+            {t("blockRepsLeftAny", { e: t(alarm.exercise), x: remaining, n: target })}
           </div>
         </div>
         <ProgressRing value={count / target} size={180} stroke={14} color={count >= target ? "var(--ok)" : "var(--accent)"}>

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Icon, ProgressRing } from "../components/ui";
 import { useStore } from "../lib/store";
-import { RepCounter, buildConfig, type Feedback, type PoseSample } from "../lib/repCounter";
+import { RepCounter, buildConfig, type Feedback, type Phase } from "../lib/repCounter";
 import { synth, type SimMode, type Skeleton } from "../lib/poseSim";
+import { SkeletonLayer, paintSkeleton } from "../components/SkeletonOverlay";
 import { detectPose, getPoseLandmarker } from "../lib/poseDetector";
 import type { PoseLandmarker } from "@mediapipe/tasks-vision";
 import { playRepTick, vibrate } from "../lib/audio";
@@ -16,15 +17,21 @@ export interface MissionResult {
   durationSec: number;
 }
 
+interface UiState {
+  feedback: Feedback;
+  phase: Phase;
+  visible: boolean;
+}
+
 const MANUAL_AFTER = 30;
 
-const LINKS: [keyof Skeleton, keyof Skeleton][] = [
-  ["shoulder", "elbow"],
-  ["elbow", "wrist"],
-  ["shoulder", "hip"],
-  ["hip", "knee"],
-  ["knee", "ankle"],
-];
+function uiColor(feedback: Feedback): string {
+  const bad = feedback === "out_of_frame" || feedback === "bad_position";
+  if (bad) return "var(--bad)";
+  if (feedback === "good_rep") return "var(--ok)";
+  if (feedback === "ready") return "var(--fg)";
+  return "var(--warn)";
+}
 
 export default function Mission({
   alarm,
@@ -46,14 +53,13 @@ export default function Mission({
   );
 
   const [count, setCount] = useState(0);
-  const [feedback, setFeedback] = useState<Feedback>("out_of_frame");
-  const [phase, setPhase] = useState<"unknown" | "up" | "down">("unknown");
-  const [sk, setSk] = useState<Skeleton | null>(null);
-  const [visible, setVisible] = useState(true);
+  const [ui, setUi] = useState<UiState>({ feedback: "out_of_frame", phase: "unknown", visible: true });
+  const uiRef = useRef(ui);
   const [elapsed, setElapsed] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [mode, setMode] = useState<SimMode>("full");
   const [showProblem, setShowProblem] = useState(false);
+  const [summary, setSummary] = useState(false);
   const [camState, setCamState] = useState<"off" | "on" | "error">("off");
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -62,10 +68,14 @@ export default function Mission({
   const camStateRef = useRef(camState);
   camStateRef.current = camState;
   const detectorRef = useRef<PoseLandmarker | null>(null);
+  const skelG = useRef<SVGGElement>(null);
   const doneRef = useRef(false);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
   const elapsedRef = useRef(0);
+  const summaryTimer = useRef<number | null>(null);
+  const DEBUG = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug");
+  const [dbg, setDbg] = useState({ fps: 0, angle: 0, phase: "-", side: "-", lock: false });
 
   const target = alarm.reps;
   const remaining = Math.max(0, target - count);
@@ -110,48 +120,83 @@ export default function Mission({
     };
   }, []);
 
-  // Boucle de traitement (≈ 30 fps) : pose → angle → machine à états
+  // Met à jour l'état React uniquement quand quelque chose change vraiment.
+  const pushUi = (feedback: Feedback, phase: Phase, visible: boolean) => {
+    const cur = uiRef.current;
+    if (cur.feedback === feedback && cur.phase === phase && cur.visible === visible) return;
+    const next = { feedback, phase, visible };
+    uiRef.current = next;
+    setUi(next);
+  };
+
+  // Boucle de traitement : une itération par NOUVELLE frame vidéo.
+  // Le squelette est peint en DOM impératif ; React n'est re-rendu que
+  // quand feedback/phase/visibilité changent réellement.
   useEffect(() => {
     if (!playing) return;
     let raf = 0;
-    const t0 = performance.now();
-    let lastVisible = true;
+    let lastVT = -1;
+    let frames = 0;
+    let fpsT0 = performance.now();
+    let fps = 0;
+    let dbgT = 0;
     const loop = () => {
-      const t = performance.now() - t0;
-      let sk: Skeleton | null;
-      let sample: PoseSample;
+      raf = requestAnimationFrame(loop);
+      const now = performance.now();
+      frames++;
+      if (now - fpsT0 >= 500) {
+        fps = Math.round((frames * 1000) / (now - fpsT0));
+        frames = 0;
+        fpsT0 = now;
+      }
+      const t = now;
       const video = videoRef.current;
       const detector = detectorRef.current;
-      if (camStateRef.current === "on") {
-        // Caméra active : vraie détection de pose, rien n'est compté sans personne détectée.
-        const d =
-          detector && video && video.readyState >= 2
-            ? detectPose(detector, video, t, alarm.exercise)
-            : null;
-        sk = d?.sk ?? null;
-        sample = d?.sample ?? { angle: 0, confidence: 0, aligned: false, t };
+      const camOn = camStateRef.current === "on";
+      let rep = false;
+      let vis = false;
+      let angle = 0;
+      let sideUsed = "-";
+
+      if (camOn) {
+        // Caméra active : vraie détection, une itération par frame vidéo nouvelle.
+        if (!video || video.readyState < 2 || video.currentTime === lastVT) {
+          if (DEBUG && now - dbgT > 200) {
+            dbgT = now;
+            setDbg({ fps, angle: 0, phase: counter.phase, side: "-", lock: counter.locked });
+          }
+          return;
+        }
+        lastVT = video.currentTime;
+        const d = detector ? detectPose(detector, video, t, alarm.exercise) : null;
+        const skel: Skeleton | null = d?.sk ?? null;
+        vis = d ? d.sample.confidence >= counter.cfg.minConfidence : false;
+        if (d) {
+          angle = d.sample.angle;
+          sideUsed = d.side;
+        }
+        paintSkeleton(skelG.current, skel, uiColor(counter.feedback), vis ? 1 : 0.25);
+        rep = counter.update(d ? d.sample : null, t);
       } else {
         // Caméra non activée : simulateur de démo.
         const s = synth(t, alarm.exercise, modeRef.current);
-        sk = s.sk;
-        sample = s.sample;
+        paintSkeleton(skelG.current, s.sk, uiColor(counter.feedback), 1);
+        angle = s.sample.angle;
+        vis = true;
+        rep = counter.update(s.sample, t);
       }
-      const rep = counter.update(sample);
-      setSk(sk);
-      setFeedback(counter.feedback);
-      setPhase(counter.phase);
-      const vis = sample.confidence >= counter.cfg.minConfidence;
-      if (vis !== lastVisible) {
-        lastVisible = vis;
-        setVisible(vis);
-      }
+
       if (rep) {
         setCount(counter.count);
         playRepTick();
         // vibration progressive : plus on approche de la fin, plus elle est franche
         vibrate(25 + Math.round((counter.count / alarm.reps) * 150));
       }
-      raf = requestAnimationFrame(loop);
+      pushUi(counter.feedback, counter.phase, vis);
+      if (DEBUG && now - dbgT > 200) {
+        dbgT = now;
+        setDbg({ fps, angle: Math.round(angle), phase: counter.phase, side: sideUsed, lock: counter.locked });
+      }
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
@@ -162,14 +207,37 @@ export default function Mission({
     return () => clearInterval(id);
   }, []);
 
-  // Fin de mission
+  // Fin de série : résumé + Refaire ; la mission se valide seule après quelques secondes.
   useEffect(() => {
     if (count >= target && !doneRef.current) {
       doneRef.current = true;
       setPlaying(false);
-      setTimeout(() => onCompleteRef.current({ reps: target, method: "camera", durationSec: elapsedRef.current }), 700);
+      setSummary(true);
+      summaryTimer.current = window.setTimeout(
+        () => onCompleteRef.current({ reps: target, method: "camera", durationSec: elapsedRef.current }),
+        10000,
+      );
     }
+    return () => {
+      if (summaryTimer.current) {
+        clearTimeout(summaryTimer.current);
+        summaryTimer.current = null;
+      }
+    };
   }, [count, target]);
+
+  const redo = () => {
+    if (summaryTimer.current) {
+      clearTimeout(summaryTimer.current);
+      summaryTimer.current = null;
+    }
+    doneRef.current = false;
+    counter.reset();
+    setCount(0);
+    setElapsed(0);
+    setSummary(false);
+    setPlaying(true);
+  };
 
   elapsedRef.current = elapsed;
   const manualLeft = Math.max(0, MANUAL_AFTER - elapsed);
@@ -183,9 +251,10 @@ export default function Mission({
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
 
-  const good = feedback === "good_rep" || feedback === "ready";
-  const bad = feedback === "out_of_frame" || feedback === "bad_position";
-  const fbColor = bad ? "var(--bad)" : feedback === "good_rep" ? "var(--ok)" : good ? "var(--fg)" : "var(--warn)";
+  const good = ui.feedback === "good_rep" || ui.feedback === "ready";
+  const bad = ui.feedback === "out_of_frame" || ui.feedback === "bad_position";
+  const fbColor = bad ? "var(--bad)" : ui.feedback === "good_rep" ? "var(--ok)" : good ? "var(--fg)" : "var(--warn)";
+  const fbKey = ui.feedback === "get_in_position" ? (alarm.exercise === "squat" ? "fb_squatPos" : "fb_pushupPos") : (`fb_${ui.feedback}` as const);
 
   return (
     <div className="flex min-h-full flex-col">
@@ -212,20 +281,16 @@ export default function Mission({
             }}
           />
         )}
-        {/* repères du corps */}
+        {/* repères du corps : peinture impérative, pas de re-render par frame */}
         <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" className="absolute inset-0 h-full w-full">
-          {sk && (
-            <g opacity={visible ? 1 : 0.25} style={{ transition: "opacity .2s" }}>
-              {LINKS.map(([a, b]) => (
-                <line key={a + b} x1={sk[a].x} y1={sk[a].y} x2={sk[b].x} y2={sk[b].y} stroke={fbColor} strokeWidth={1.6} strokeLinecap="round" />
-              ))}
-              {(Object.keys(sk) as (keyof Skeleton)[]).map((k) => (
-                <circle key={k} cx={sk[k].x} cy={sk[k].y} r={k === "elbow" || k === "knee" ? 2.4 : 1.8} fill={k === "elbow" || k === "knee" ? "var(--accent)" : "#fff"} />
-              ))}
-              <circle cx={sk.shoulder.x + (alarm.exercise === "pushup" ? 5 : 1)} cy={sk.shoulder.y - 5} r={4} fill="none" stroke={fbColor} strokeWidth={1.2} />
-            </g>
-          )}
+          <SkeletonLayer ref={skelG} />
         </svg>
+
+        {DEBUG && (
+          <div className="absolute left-3 top-3 z-10 rounded-lg bg-black/70 px-2 py-1 font-mono text-[10px] font-bold text-[var(--ok)]">
+            {dbg.fps}fps · {alarm.exercise} · {dbg.angle}° · {dbg.phase} · {dbg.side} · lock {dbg.lock ? "yes" : "no"}
+          </div>
+        )}
 
         <div className="absolute start-3 top-3 flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1 text-[11px] font-bold text-white">
           <span className={cn("h-2 w-2 rounded-full", camState === "on" ? "bg-[var(--ok)]" : "bg-[var(--warn)]")} />
@@ -240,7 +305,7 @@ export default function Mission({
 
         {/* message temps réel */}
         <div className="absolute inset-x-3 bottom-3 rounded-2xl bg-black/70 px-4 py-3 text-center text-xl font-extrabold backdrop-blur" style={{ color: fbColor }} role="status" aria-live="polite">
-          {t(`fb_${feedback}`)}
+          {t(fbKey)}
         </div>
       </div>
 
@@ -260,12 +325,26 @@ export default function Mission({
             </div>
           </ProgressRing>
           <div className="w-24 text-center">
-            <div className="text-4xl font-black text-[var(--accent)]">{phase === "down" ? "↓" : phase === "up" ? "↑" : "·"}</div>
-            <div className="text-xs font-bold uppercase text-[var(--muted)]">{phase === "down" ? t("phase_down") : phase === "up" ? t("phase_up") : "—"}</div>
+            <div className="text-4xl font-black text-[var(--accent)]">{ui.phase === "down" ? "↓" : ui.phase === "up" ? "↑" : "·"}</div>
+            <div className="text-xs font-bold uppercase text-[var(--muted)]">{ui.phase === "down" ? t("phase_down") : ui.phase === "up" ? t("phase_up") : "—"}</div>
           </div>
         </div>
 
-        {/* contrôles de démo */}
+        {/* résumé de fin de série ou contrôles de démo */}
+        {summary ? (
+          <div className="slide-up w-full space-y-3 rounded-3xl border border-[var(--ok)] bg-[var(--card)] p-5 text-center">
+            <div className="text-2xl font-black text-[var(--ok)]">{t("seriesDone")}</div>
+            <div className="text-base font-bold">
+              {alarm.exercise === "pushup" ? "💪" : "🦵"} {t(alarm.exercise)} · {count} {t("repsUnit")}
+            </div>
+            <div className="tnum text-sm font-bold text-[var(--muted)]" dir="ltr">
+              ⏱ {mm}:{ss}
+            </div>
+            <Button variant="ghost" className="w-full" onClick={redo}>
+              <Icon name="play" size={18} /> {t("redo")}
+            </Button>
+          </div>
+        ) : (
         <div className="w-full rounded-2xl border border-dashed border-[var(--line)] p-3">
           <div className="mb-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-wide text-[var(--muted)]">
             <span>{t("demoMovement")}</span>
@@ -289,6 +368,7 @@ export default function Mission({
           </div>
           <p className="mt-2 text-[11px] leading-snug text-[var(--muted)]">{t("demoNote")}</p>
         </div>
+        )}
       </div>
 
       {/* actions de secours */}

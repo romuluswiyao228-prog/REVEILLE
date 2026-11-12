@@ -86,23 +86,28 @@ export function synth(t: number, exercise: Exercise, mode: SimMode, periodMs = 2
 
   const out = mode === "out";
   const angle = exercise === "pushup" ? angleAt(sk.shoulder, sk.elbow, sk.wrist) : angleAt(sk.hip, sk.knee, sk.ankle);
-  // alignement
-  let aligned: boolean;
-  if (exercise === "pushup") {
-    const dy = Math.abs(sk.shoulder.y - sk.hip.y);
-    const dxx = Math.abs(sk.shoulder.x - sk.hip.x);
-    aligned = dy < dxx * 0.6;
-  } else {
-    aligned = true;
-  }
+  // Position de pompe : torse horizontal + poignets sous les épaules (vérifiée une fois).
+  const dy = Math.abs(sk.shoulder.y - sk.hip.y);
+  const dxx = Math.abs(sk.shoulder.x - sk.hip.x);
+  const posOk = dy < dxx * 0.6 && Math.abs(sk.wrist.x - sk.shoulder.x) < 30 && sk.wrist.y > sk.shoulder.y;
+  // Ratio de hauteur de hanche pour les squats (0 = cheville, 1 = épaule).
+  const hipRatio = Math.max(0, Math.min(1, (sk.ankle.y - sk.hip.y) / Math.max(1, sk.ankle.y - sk.shoulder.y)));
   // Confiance par point clé : hors cadre -> tout est faible, sinon fiable.
   const kp = out ? 0.15 : 0.92;
   const keypoints: Record<string, number> =
     exercise === "pushup"
-      ? { shoulder: kp, elbow: kp, wrist: kp, hip: kp }
+      ? { shoulder: kp, elbow: kp, wrist: kp }
       : { hip: kp, knee: kp, ankle: kp };
   return {
     sk,
-    sample: { angle, confidence: out ? 0.1 : 0.92, aligned, t, keypoints },
+    sample: {
+      angle,
+      confidence: out ? 0.1 : 0.92,
+      aligned: posOk,
+      posOk: !out && posOk,
+      hipRatio,
+      t,
+      keypoints,
+    },
   };
 }

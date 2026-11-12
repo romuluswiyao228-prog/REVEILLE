@@ -11,6 +11,11 @@ export interface PoseDetection {
   side: "left" | "right";
 }
 
+/** Vrai si les 3 points du côté ont tous une visibilité >= minV. */
+function sideUsable(lms: NormalizedLandmark[], s: number, e: number, w: number, minV: number): boolean {
+  return vis(lms[s]) >= minV && vis(lms[e]) >= minV && vis(lms[w]) >= minV;
+}
+
 let landmarkerPromise: Promise<PoseLandmarker | null> | null = null;
 
 const MODELS = ["/mediapipe/models/pose_landmarker_lite.task"];
@@ -59,10 +64,6 @@ const vis = (lm: NormalizedLandmark | undefined) => lm?.visibility ?? 0;
 const pt = (lm: NormalizedLandmark): P => ({ x: lm.x, y: lm.y });
 const mid = (a: NormalizedLandmark, b: NormalizedLandmark): P => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
-function minVis(lms: NormalizedLandmark[], ...idx: number[]): number {
-  return Math.min(...idx.map((i) => vis(lms[i])));
-}
-
 /** Visibilité moyenne des 3 points d'un côté (épaule/coude/poignet ou hanche/genou/cheville). */
 function sideScore(lms: NormalizedLandmark[], s: number, e: number, w: number): number {
   return (vis(lms[s]) + vis(lms[e]) + vis(lms[w])) / 3;
@@ -92,14 +93,16 @@ export function detectPose(
 
   const pushup = exercise === "pushup";
 
-  // ---- Pompes : angle du coude pour les DEUX côtés, on ne garde que le meilleur ----
+  // ---- Pompes : angle du coude pour les DEUX côtés ----
+  // On garde le côté à meilleure visibilité moyenne parmi ceux dont les 3
+  // points requis sont tous >= 0.5. Les deux bras ne sont jamais exigés.
   if (pushup) {
+    const lOk = sideUsable(lms, L_SHOULDER, L_ELBOW, L_WRIST, 0.5);
+    const rOk = sideUsable(lms, R_SHOULDER, R_ELBOW, R_WRIST, 0.5);
+    if (!lOk && !rOk) return null; // frame ignorée : aucun côté exploitable
     const lScore = sideScore(lms, L_SHOULDER, L_ELBOW, L_WRIST);
     const rScore = sideScore(lms, R_SHOULDER, R_ELBOW, R_WRIST);
-    const useLeft = lScore >= rScore;
-    const best = Math.max(lScore, rScore);
-    // Côté inexploitable : on ne considère pas la personne comme détectée.
-    if (best < 0.3) return null;
+    const useLeft = lOk && (!rOk || lScore >= rScore);
 
     const sIdx = useLeft ? L_SHOULDER : R_SHOULDER;
     const eIdx = useLeft ? L_ELBOW : R_ELBOW;
@@ -109,8 +112,7 @@ export function detectPose(
 
     const angle = angleAt(pt(lms[sIdx]), pt(lms[eIdx]), pt(lms[wIdx]));
 
-    // Confiance : uniquement les 3 points du côté choisi (pas de hanche,
-    // aucune vérification d'alignement du corps).
+    // Confiance : uniquement les 3 points du côté choisi.
     const keypoints: Record<string, number> = {
       shoulder: vis(lms[sIdx]),
       elbow: vis(lms[eIdx]),
@@ -120,6 +122,15 @@ export function detectPose(
 
     const shoulder = mid(lms[L_SHOULDER], lms[R_SHOULDER]);
     const hip = mid(lms[L_HIP], lms[R_HIP]);
+    const ankle = mid(lms[L_ANKLE], lms[R_ANKLE]);
+
+    // Position de pompe (vérifiée UNE SEULE FOIS par le compteur) :
+    // torse proche de l'horizontale ET poignets sous les épaules.
+    const bodyAng = angleAt(shoulder, hip, ankle);
+    const torsoOk = bodyAng > 150 || Math.abs(shoulder.y - hip.y) < 0.15;
+    const wrist = pt(lms[wIdx]);
+    const wristsUnder = Math.abs(wrist.x - shoulder.x) < 0.3 && wrist.y > shoulder.y;
+    const posOk = torsoOk && wristsUnder;
 
     const sk: Skeleton = {
       shoulder: { x: (1 - shoulder.x) * 100, y: shoulder.y * 100 },
@@ -131,28 +142,36 @@ export function detectPose(
     };
     return {
       sk,
-      sample: { angle, confidence, aligned: true, t, keypoints },
+      sample: { angle, confidence, aligned: posOk, posOk, t, keypoints },
       side: useLeft ? "left" : "right",
     };
   }
 
-  // ---- Squats : inchangé (meilleur côté pour la jambe) ----
+  // ---- Squats : angle hanche-genou-cheville, meilleur côté ----
+  const lOk = sideUsable(lms, L_HIP, L_KNEE, L_ANKLE, 0.5);
+  const rOk = sideUsable(lms, R_HIP, R_KNEE, R_ANKLE, 0.5);
+  if (!lOk && !rOk) return null;
   const lScore = sideScore(lms, L_HIP, L_KNEE, L_ANKLE);
   const rScore = sideScore(lms, R_HIP, R_KNEE, R_ANKLE);
-  const useLeft = lScore >= rScore;
-  if (Math.max(lScore, rScore) < 0.3) return null;
+  const useLeft = lOk && (!rOk || lScore >= rScore);
   const i = useLeft ? 0 : 1;
 
   const keypoints: Record<string, number> = {
-    hip: minVis(lms, L_HIP, R_HIP),
-    knee: minVis(lms, L_KNEE, R_KNEE),
-    ankle: minVis(lms, L_ANKLE, R_ANKLE),
+    hip: vis(lms[L_HIP + i]),
+    knee: vis(lms[L_KNEE + i]),
+    ankle: vis(lms[L_ANKLE + i]),
   };
   const confidence = Object.values(keypoints).reduce((a, b) => a + b, 0) / 3;
 
   const angle = angleAt(mid(lms[L_HIP], lms[R_HIP]), pt(lms[L_KNEE + i]), pt(lms[L_ANKLE + i]));
   const shoulder = mid(lms[L_SHOULDER], lms[R_SHOULDER]);
   const hip = mid(lms[L_HIP], lms[R_HIP]);
+  const ankle = mid(lms[L_ANKLE], lms[R_ANKLE]);
+
+  // Ratio de hauteur de hanche (fallback si l'angle est instable) :
+  // ~0.6 debout, ~0.3 en squat profond. Convention y vers le bas.
+  const hipRatio = Math.max(0, Math.min(1, (ankle.y - hip.y) / Math.max(0.01, ankle.y - shoulder.y)));
+
   const sk: Skeleton = {
     shoulder: { x: (1 - shoulder.x) * 100, y: shoulder.y * 100 },
     elbow: { x: (1 - lms[L_ELBOW + i].x) * 100, y: lms[L_ELBOW + i].y * 100 },
@@ -163,7 +182,7 @@ export function detectPose(
   };
   return {
     sk,
-    sample: { angle, confidence, aligned: true, t, keypoints },
+    sample: { angle, confidence, aligned: true, hipRatio, t, keypoints },
     side: useLeft ? "left" : "right",
   };
 }
