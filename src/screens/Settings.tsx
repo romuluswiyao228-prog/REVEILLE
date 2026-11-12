@@ -171,6 +171,22 @@ export default function Settings({ onPrivacy, onPremium }: { onPrivacy: () => vo
 
         {isNative() && <NativeDiagnostics t={t} />}
 
+        {!isNative() && (
+          <Field label={t("androidApp")}>
+            <Card className="!p-4">
+              <p className="text-sm text-[var(--muted)]">{t("androidAppDesc")}</p>
+              <a
+                href="/downloads/WakeFit.apk"
+                download="WakeFit.apk"
+                className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 text-sm font-bold text-[var(--accent-fg)]"
+              >
+                <Icon name="download" />
+                {t("downloadApk")}
+              </a>
+            </Card>
+          </Field>
+        )}
+
         <button onClick={onPrivacy} className="flex min-h-14 w-full items-center gap-3 rounded-2xl border border-[var(--line)] bg-[var(--card)] px-4 text-start font-bold">
           <Icon name="shield" className="text-[var(--ok)]" />
           <span className="flex-1">{t("privacyPolicy")}</span>
