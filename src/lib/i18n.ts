@@ -100,7 +100,7 @@ const fr = {
   phase_up: "Haut",
   phase_down: "Bas",
 
-  fb_out_of_frame: "Reviens dans le cadre",
+  fb_out_of_frame: "Place-toi dans le cadre",
   fb_get_in_position: "Mets-toi en position",
   fb_ready: "Prêt, descends",
   fb_go_lower: "Descends un peu plus",
@@ -301,7 +301,7 @@ const en: Dict = {
   phase_up: "Up",
   phase_down: "Down",
 
-  fb_out_of_frame: "Step back into the frame",
+  fb_out_of_frame: "Get in the frame",
   fb_get_in_position: "Get into position",
   fb_ready: "Ready, go down",
   fb_go_lower: "Go a bit lower",
@@ -500,7 +500,7 @@ const ar: Dict = {
   phase_up: "أعلى",
   phase_down: "أسفل",
 
-  fb_out_of_frame: "عُد إلى الإطار",
+  fb_out_of_frame: "ضع نفسك في الإطار",
   fb_get_in_position: "خذ وضعية البداية",
   fb_ready: "جاهز، انزل",
   fb_go_lower: "انزل قليلاً أكثر",

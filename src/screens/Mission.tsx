@@ -44,7 +44,7 @@ export default function Mission({
   );
 
   const [count, setCount] = useState(0);
-  const [feedback, setFeedback] = useState<Feedback>("get_in_position");
+  const [feedback, setFeedback] = useState<Feedback>("out_of_frame");
   const [phase, setPhase] = useState<"unknown" | "up" | "down">("unknown");
   const [sk, setSk] = useState<Skeleton | null>(null);
   const [visible, setVisible] = useState(true);

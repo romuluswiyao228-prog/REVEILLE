@@ -95,8 +95,14 @@ export function synth(t: number, exercise: Exercise, mode: SimMode, periodMs = 2
   } else {
     aligned = true;
   }
+  // Confiance par point clé : hors cadre -> tout est faible, sinon fiable.
+  const kp = out ? 0.15 : 0.92;
+  const keypoints: Record<string, number> =
+    exercise === "pushup"
+      ? { shoulder: kp, elbow: kp, wrist: kp, hip: kp }
+      : { hip: kp, knee: kp, ankle: kp };
   return {
     sk,
-    sample: { angle, confidence: out ? 0.1 : 0.92, aligned, t },
+    sample: { angle, confidence: out ? 0.1 : 0.92, aligned, t, keypoints },
   };
 }
