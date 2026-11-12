@@ -53,6 +53,9 @@ class MainActivity : FlutterActivity() {
                         val id = call.argument<Int>("id")!!
                         AlarmStore.cancel(this, id); AlarmStore.remove(this, id); result.success(null)
                     }
+                    // Filet de sécurité au lancement : replanifie toutes les alarmes enabled
+                    // (couvre un BOOT_COMPLETED manqué par l'OEM, sans avoir besoin de getPending).
+                    "rescheduleAll" -> { AlarmStore.rescheduleAll(this); result.success(null) }
                     "stopRinging" -> { stopService(Intent(this, AlarmService::class.java)); result.success(null) }
                     "initialRingingAlarm" -> result.success(
                         intent?.getIntExtra("ringingAlarmId", -1)?.takeIf { it != -1 } ?: AlarmService.currentAlarmId

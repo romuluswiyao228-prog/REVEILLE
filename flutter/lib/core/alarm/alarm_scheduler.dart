@@ -41,6 +41,9 @@ class AlarmScheduler {
 
   Future<void> cancel(int id) => _channel.invokeMethod('cancel', {'id': id});
 
+  /// Replanifie toutes les alarmes actives côté natif (filet de sécurité au lancement de l'app).
+  Future<void> rescheduleAll() => _channel.invokeMethod('rescheduleAll');
+
   /// Report ponctuel (snooze d'urgence 5 min / « J'ai un problème » 10 min).
   Future<void> postpone(AlarmModel a, Duration d) => _channel.invokeMethod('postpone', {
         'id': a.id,

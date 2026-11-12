@@ -44,6 +44,8 @@ class _WakeFitAppState extends ConsumerState<WakeFitApp> {
     super.initState();
     // Alarme qui sonne : ouvrir directement l'écran de mission (app fermée → cold start, ou ouverte → onRing).
     AlarmScheduler.instance.listenForRing(_openMission);
+    // Filet de sécurité : si le BootReceiver a été manqué, on replanifie tout au lancement.
+    AlarmScheduler.instance.rescheduleAll();
     AlarmScheduler.instance.initialRingingAlarm().then((id) {
       if (id != null) WidgetsBinding.instance.addPostFrameCallback((_) => _openMission(id));
     });
