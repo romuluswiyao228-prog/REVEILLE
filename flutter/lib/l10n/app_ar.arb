@@ -1,0 +1,22 @@
+{
+  "@@locale": "ar",
+  "appTitle": "WakeFit",
+  "addAlarm": "إضافة",
+  "cameraWhy": "يستخدم WakeFit الكاميرا الأمامية فقط لعدّ تكراراتك. تُحلَّل الصور على هاتفك ولا تُحفظ ولا تُرسل أبداً.",
+  "openSettings": "فتح الإعدادات",
+  "manualConfirm": "تأكيد يدوي",
+  "manualUsed": "تم استخدام التأكيد اليدوي اليوم",
+  "manualWait": "تأكيد يدوي بعد {s} ث",
+  "problem": "لديّ مشكلة",
+  "problemUsed": "تم استخدام التأجيل اليوم",
+  "remainingCount": "{n} متبقية",
+  "fbOutOfFrame": "عُد إلى الإطار",
+  "fbGetInPosition": "خذ وضعية البداية",
+  "fbReady": "جاهز، انزل",
+  "fbGoLower": "انزل قليلاً أكثر",
+  "fbPushUp": "ارتفع بالكامل",
+  "fbGoodRep": "أحسنت!",
+  "fbBadPosition": "حافظ على استقامة جسمك",
+  "missionDone": "أُنجزت المهمة",
+  "backHome": "العودة إلى الرئيسية"
+}

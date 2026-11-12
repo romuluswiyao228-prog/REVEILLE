@@ -1,0 +1,22 @@
+{
+  "@@locale": "en",
+  "appTitle": "WakeFit",
+  "addAlarm": "Add",
+  "cameraWhy": "WakeFit uses the front camera only to count your reps. Images are analysed on your phone and are never saved or sent anywhere.",
+  "openSettings": "Open settings",
+  "manualConfirm": "Confirm manually",
+  "manualUsed": "Manual confirmation already used today",
+  "manualWait": "Confirm manually in {s}s",
+  "problem": "I have a problem",
+  "problemUsed": "Postponement already used today",
+  "remainingCount": "{n} left",
+  "fbOutOfFrame": "Step back into the frame",
+  "fbGetInPosition": "Get into position",
+  "fbReady": "Ready, go down",
+  "fbGoLower": "Go a bit lower",
+  "fbPushUp": "Push all the way up",
+  "fbGoodRep": "Nice one!",
+  "fbBadPosition": "Keep your body aligned",
+  "missionDone": "Mission complete",
+  "backHome": "Back to home"
+}

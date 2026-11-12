@@ -1,0 +1,50 @@
+name: wakefit
+description: Réveil qui exige des pompes (ou squats) détectées par la caméra, 100 % sur l'appareil.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.22.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: any
+
+  # État & données
+  flutter_riverpod: ^2.5.1
+  hive_flutter: ^1.1.0
+
+  # Caméra + détection de pose (on-device)
+  camera: ^0.11.0
+  google_mlkit_pose_detection: ^0.12.0
+  permission_handler: ^11.3.1
+
+  # Alarmes / notifications / son
+  flutter_local_notifications: ^17.2.2
+  timezone: ^0.9.4
+  audioplayers: ^6.0.0
+  vibration: ^2.0.0
+  wakelock_plus: ^1.2.8
+
+  # Firebase + abonnements
+  firebase_core: ^3.3.0
+  firebase_analytics: ^11.2.1
+  firebase_crashlytics: ^4.0.4
+  purchases_flutter: ^8.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  generate: true # génère AppLocalizations depuis lib/l10n/*.arb
+  assets:
+    - assets/sounds/

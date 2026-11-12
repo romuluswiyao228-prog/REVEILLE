@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+:root,
+:root[data-theme="dark"] {
+  --bg: #0b0d12;
+  --card: #151922;
+  --card2: #1d2330;
+  --line: #262d3b;
+  --fg: #f5f7fb;
+  --muted: #8d97ab;
+  --accent: #ff6b2c;
+  --accent-fg: #14100d;
+  --ok: #3ddc97;
+  --warn: #ffc23d;
+  --bad: #ff5d6c;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #f4f5f8;
+  --card: #ffffff;
+  --card2: #eceef3;
+  --line: #dde1ea;
+  --fg: #11141b;
+  --muted: #667085;
+  --accent: #f0561a;
+  --accent-fg: #ffffff;
+  --ok: #12a566;
+  --warn: #c98a00;
+  --bad: #d93b4b;
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Arabic", sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+input[type="range"] {
+  accent-color: var(--accent);
+}
+
+@keyframes ring-shake {
+  0%, 100% { transform: rotate(0); }
+  10%, 30%, 50%, 70%, 90% { transform: rotate(-12deg); }
+  20%, 40%, 60%, 80% { transform: rotate(12deg); }
+}
+.ring-shake {
+  animation: ring-shake 1.2s infinite;
+  transform-origin: 50% 10%;
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+  100% { box-shadow: 0 0 0 36px transparent; }
+}
+.pulse-ring {
+  animation: pulse-ring 1.4s infinite;
+}
+
+@keyframes pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+.pop {
+  animation: pop 0.35s ease-out;
+}
+
+@keyframes confetti {
+  0% { transform: translateY(-10vh) rotate(0); opacity: 1; }
+  100% { transform: translateY(105vh) rotate(720deg); opacity: 0.9; }
+}
+.confetti {
+  position: absolute;
+  top: 0;
+  width: 10px;
+  height: 16px;
+  border-radius: 2px;
+  animation: confetti linear forwards;
+}
+
+@keyframes slide-up {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.slide-up {
+  animation: slide-up 0.28s ease-out;
+}
+
+@keyframes check-draw {
+  from { stroke-dashoffset: 60; }
+  to { stroke-dashoffset: 0; }
+}
+.check-draw {
+  stroke-dasharray: 60;
+  animation: check-draw 0.6s 0.2s ease-out forwards;
+  stroke-dashoffset: 60;
+}

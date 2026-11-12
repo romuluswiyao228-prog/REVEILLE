@@ -1,0 +1,22 @@
+<!-- À fusionner dans ios/Runner/Info.plist -->
+
+<key>NSCameraUsageDescription</key>
+<string>WakeFit utilise la caméra frontale uniquement pendant la mission de réveil pour compter tes pompes. Les images sont analysées sur ton téléphone et ne sont jamais enregistrées ni envoyées.</string>
+
+<!-- Le son d'alarme continue si l'app passe en arrière-plan juste après la sonnerie -->
+<key>UIBackgroundModes</key>
+<array>
+  <string>audio</string>
+</array>
+
+<!-- Localisations affichées par iOS (permissions, etc.) -->
+<key>CFBundleLocalizations</key>
+<array>
+  <string>fr</string>
+  <string>en</string>
+  <string>ar</string>
+</array>
+
+<!-- Fichiers sonores : ajouter sunrise.caf, pulse.caf, digital.caf, siren.caf, beacon.caf
+     (≤ 30 s) à la cible Runner (Copy Bundle Resources). Convertir :
+     afconvert -f caff -d LEI16@44100 sunrise.wav sunrise.caf -->
