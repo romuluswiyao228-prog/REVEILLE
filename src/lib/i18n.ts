@@ -111,6 +111,9 @@ const fr = {
   missionDone: "Mission accomplie",
   missionDoneSub: "Tu es debout, alarme éteinte. Belle journée !",
   backHome: "Retour à l'accueil",
+  blockRepsLeft: "Pompes restantes : {x} / {n}",
+  blockDoneTitle: "Bravo, alarme terminée",
+  blockHome: "Retour à l'accueil",
   newBadge: "Nouveau badge",
   timeTaken: "Durée",
 
@@ -312,6 +315,9 @@ const en: Dict = {
   missionDone: "Mission complete",
   missionDoneSub: "You're up and the alarm is off. Have a great day!",
   backHome: "Back to home",
+  blockRepsLeft: "Push-ups left: {x} / {n}",
+  blockDoneTitle: "Well done, alarm finished",
+  blockHome: "Back to home",
   newBadge: "New badge",
   timeTaken: "Duration",
 
@@ -511,6 +517,9 @@ const ar: Dict = {
   missionDone: "أُنجزت المهمة",
   missionDoneSub: "أنت مستيقظ وتم إيقاف المنبّه. يوم سعيد!",
   backHome: "العودة إلى الرئيسية",
+  blockRepsLeft: "تمارين الضغط المتبقية: {x} / {n}",
+  blockDoneTitle: "أحسنت، انتهى المنبه",
+  blockHome: "العودة إلى الرئيسية",
   newBadge: "شارة جديدة",
   timeTaken: "المدة",
 

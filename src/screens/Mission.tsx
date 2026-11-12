@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Icon, ProgressRing } from "../components/ui";
 import { useStore } from "../lib/store";
-import { RepCounter, buildConfig, type Feedback } from "../lib/repCounter";
+import { RepCounter, buildConfig, type Feedback, type PoseSample } from "../lib/repCounter";
 import { synth, type SimMode, type Skeleton } from "../lib/poseSim";
+import { detectPose, getPoseLandmarker } from "../lib/poseDetector";
+import type { PoseLandmarker } from "@mediapipe/tasks-vision";
 import { playRepTick, vibrate } from "../lib/audio";
 import { dateKey } from "../lib/stats";
 import type { Alarm } from "../lib/types";
@@ -49,7 +51,7 @@ export default function Mission({
   const [sk, setSk] = useState<Skeleton | null>(null);
   const [visible, setVisible] = useState(true);
   const [elapsed, setElapsed] = useState(0);
-  const [playing, setPlaying] = useState(true);
+  const [playing, setPlaying] = useState(false);
   const [mode, setMode] = useState<SimMode>("full");
   const [showProblem, setShowProblem] = useState(false);
   const [camState, setCamState] = useState<"off" | "on" | "error">("off");
@@ -57,6 +59,9 @@ export default function Mission({
   const streamRef = useRef<MediaStream | null>(null);
   const modeRef = useRef(mode);
   modeRef.current = mode;
+  const camStateRef = useRef(camState);
+  camStateRef.current = camState;
+  const detectorRef = useRef<PoseLandmarker | null>(null);
   const doneRef = useRef(false);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
@@ -76,6 +81,7 @@ export default function Mission({
         await videoRef.current.play().catch(() => {});
       }
       setCamState("on");
+      setPlaying(true);
       setSettings({ cameraGranted: true });
     } catch {
       setCamState("error");
@@ -90,6 +96,17 @@ export default function Mission({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Chargement du modèle de pose (WASM + .task servis en local).
+  useEffect(() => {
+    let alive = true;
+    void getPoseLandmarker().then((l) => {
+      if (alive) detectorRef.current = l;
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   // Boucle de traitement (≈ 30 fps) : pose → angle → machine à états
   useEffect(() => {
     if (!playing) return;
@@ -98,7 +115,24 @@ export default function Mission({
     let lastVisible = true;
     const loop = () => {
       const t = performance.now() - t0;
-      const { sk, sample } = synth(t, alarm.exercise, modeRef.current);
+      let sk: Skeleton | null;
+      let sample: PoseSample;
+      const video = videoRef.current;
+      const detector = detectorRef.current;
+      if (camStateRef.current === "on") {
+        // Caméra active : vraie détection de pose, rien n'est compté sans personne détectée.
+        const d =
+          detector && video && video.readyState >= 2
+            ? detectPose(detector, video, t, alarm.exercise)
+            : null;
+        sk = d?.sk ?? null;
+        sample = d?.sample ?? { angle: 0, confidence: 0, aligned: false, t };
+      } else {
+        // Caméra non activée : simulateur de démo.
+        const s = synth(t, alarm.exercise, modeRef.current);
+        sk = s.sk;
+        sample = s.sample;
+      }
       const rep = counter.update(sample);
       setSk(sk);
       setFeedback(counter.feedback);

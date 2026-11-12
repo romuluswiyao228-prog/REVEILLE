@@ -6,6 +6,8 @@ import Onboarding from "./screens/Onboarding";
 import Home from "./screens/Home";
 import AlarmEditor from "./screens/AlarmEditor";
 import Ringing from "./screens/Ringing";
+import BlockingAlarm from "./screens/BlockingAlarm";
+import { clearActiveAlarm, loadActiveAlarm } from "./lib/activeAlarm";
 import Mission, { type MissionResult } from "./screens/Mission";
 import Success, { type SuccessData } from "./screens/Success";
 import History from "./screens/History";
@@ -24,6 +26,7 @@ type Overlay =
   | { k: "paywall" }
   | { k: "privacy" }
   | { k: "ringing"; alarmId: string }
+  | { k: "block"; alarmId: string }
   | { k: "mission"; alarmId: string }
   | { k: "success"; data: SuccessData };
 
@@ -42,14 +45,14 @@ function Shell() {
   useEffect(() => {
     const tick = () => {
       const o = overlayRef.current;
-      if (o && (o.k === "ringing" || o.k === "mission" || o.k === "success")) return;
+      if (o && (o.k === "ringing" || o.k === "mission" || o.k === "success" || o.k === "block")) return;
       const now = new Date();
       const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
       if (postponed && now.getTime() >= postponed.at) {
         const id = postponed.alarmId;
         setPostponed(null);
-        if (alarms.some((a) => a.id === id)) setOverlay({ k: "ringing", alarmId: id });
+        if (alarms.some((a) => a.id === id)) setOverlay({ k: "block", alarmId: id });
         return;
       }
       for (const a of alarms) {
@@ -59,13 +62,23 @@ function Shell() {
         if (fired.current === key) continue;
         fired.current = key;
         if (a.days.length === 0) toggleAlarm(a.id);
-        setOverlay({ k: "ringing", alarmId: a.id });
+        setOverlay({ k: "block", alarmId: a.id });
         return;
       }
     };
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [alarms, postponed, setPostponed, toggleAlarm]);
+
+  // Restaure une alarme bloquante en cours après rechargement de la page.
+  useEffect(() => {
+    const a = loadActiveAlarm();
+    if (!a || !settings.onboarded) return;
+    const al = alarms.find((x) => x.id === a.alarmId);
+    if (al) setOverlay({ k: "block", alarmId: al.id });
+    else clearActiveAlarm();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const close = useCallback(() => setOverlay(null), []);
 
@@ -124,6 +137,17 @@ function Shell() {
   ];
 
   const ringingAlarm = overlay && (overlay.k === "ringing" || overlay.k === "mission") ? alarms.find((a) => a.id === overlay.alarmId) : undefined;
+  const blockAlarm = overlay && overlay.k === "block" ? alarms.find((a) => a.id === overlay.alarmId) : undefined;
+
+  const blockDone = (alarmId: string, reps: number, durationSec: number) => {
+    const a = alarms.find((x) => x.id === alarmId);
+    if (a) {
+      addHistory({ time: a.time, exercise: a.exercise, reps, target: a.reps, success: true, method: "camera", durationSec });
+    }
+    setPostponed(null);
+    setTab("home");
+    close();
+  };
 
   return (
     <div className="relative flex h-full flex-col">
@@ -179,6 +203,9 @@ function Shell() {
             </div>
           )}
           {overlay.k === "success" && <Success data={overlay.data} onHome={() => { setTab("home"); close(); }} />}
+          {overlay.k === "block" && blockAlarm && (
+            <BlockingAlarm alarm={blockAlarm} onDone={(reps, dur) => blockDone(blockAlarm.id, reps, dur)} />
+          )}
         </div>
       )}
 
