@@ -50,7 +50,11 @@ public class AlarmScheduler {
         ch.setDescription("Alarme WakeFit");
         ch.enableVibration(true);
         ch.enableLights(true);
-        ch.setSound(Uri.parse("android.resource://" + ctx.getPackageName() + "/raw/sunrise"), null);
+        android.media.AudioAttributes attrs = new android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build();
+        ch.setSound(Uri.parse("android.resource://" + ctx.getPackageName() + "/raw/sunrise"), attrs);
         nm.createNotificationChannel(ch);
     }
 

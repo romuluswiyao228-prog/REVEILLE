@@ -67,8 +67,8 @@ public class AlarmFireReceiver extends BroadcastReceiver {
         NotificationManagerCompat nm = NotificationManagerCompat.from(context);
         try {
             nm.notify(rc, b.build());
-        } catch (SecurityException e) {
-            // POST_NOTIFICATIONS non accordée : rien à faire, le JS rattrapera au foreground.
+        } catch (Throwable t) {
+            // POST_NOTIFICATIONS non accordée ou autre : le JS rattrapera au foreground.
         }
     }
 }

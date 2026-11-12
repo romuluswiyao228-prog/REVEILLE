@@ -75,6 +75,14 @@ export async function openExactAlarmSettings() {
   }
 }
 
+export async function openNotificationSettings() {
+  try {
+    await WakeAlarm.openNotificationSettings();
+  } catch {
+    /* non supporté */
+  }
+}
+
 export async function notificationPermission(): Promise<string> {
   try {
     const p = await LocalNotifications.checkPermissions();

@@ -9,6 +9,7 @@ export interface WakeAlarmPlugin {
   test(): Promise<void>;
   exactStatus(): Promise<{ status: string }>;
   openExactSettings(): Promise<void>;
+  openNotificationSettings(): Promise<void>;
   addListener(
     event: "alarmFired",
     cb: (e: { alarmId: string }) => void,

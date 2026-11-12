@@ -21,51 +21,81 @@ public class WakeAlarmPlugin extends Plugin {
 
     @PluginMethod
     public void scheduleAll(PluginCall call) {
-        String alarms = call.getString("alarms", "[]");
-        AlarmScheduler.scheduleAll(getContext(), alarms);
+        try {
+            String alarms = call.getString("alarms", "[]");
+            AlarmScheduler.scheduleAll(getContext(), alarms);
+        } catch (Throwable t) {
+            call.reject("scheduleAll failed");
+            return;
+        }
         call.resolve();
     }
 
     @PluginMethod
     public void cancelAll(PluginCall call) {
-        AlarmScheduler.cancelAll(getContext());
+        try {
+            AlarmScheduler.cancelAll(getContext());
+        } catch (Throwable t) {
+            call.reject("cancelAll failed");
+            return;
+        }
         call.resolve();
     }
 
     @PluginMethod
     public void pending(PluginCall call) {
         JSObject ret = new JSObject();
-        JSONArray arr = new JSONArray();
-        List<JSONObject> list = AlarmScheduler.pendingList(getContext());
-        for (JSONObject o : list) arr.put(o);
-        ret.put("json", arr.toString());
+        try {
+            JSONArray arr = new JSONArray();
+            List<JSONObject> list = AlarmScheduler.pendingList(getContext());
+            for (JSONObject o : list) arr.put(o);
+            ret.put("json", arr.toString());
+        } catch (Throwable t) {
+            ret.put("json", "[]");
+        }
         call.resolve(ret);
     }
 
     @PluginMethod
     public void consumeFired(PluginCall call) {
-        String[] fired = AlarmScheduler.consumeFired(getContext());
         JSObject ret = new JSObject();
-        if (fired != null) {
-            ret.put("alarmId", fired[0]);
-            ret.put("atMs", Long.parseLong(fired[1]));
+        try {
+            String[] fired = AlarmScheduler.consumeFired(getContext());
+            if (fired != null) {
+                ret.put("alarmId", fired[0]);
+                ret.put("atMs", Long.parseLong(fired[1]));
+            }
+        } catch (Throwable t) {
+            /* retourne vide */
         }
         call.resolve(ret);
     }
 
     @PluginMethod
     public void test(PluginCall call) {
-        AlarmScheduler.scheduleTest(getContext());
+        try {
+            AlarmScheduler.scheduleTest(getContext());
+        } catch (Throwable t) {
+            call.reject("test failed");
+            return;
+        }
         call.resolve();
     }
 
     @PluginMethod
     public void exactStatus(PluginCall call) {
         JSObject ret = new JSObject();
+        // canScheduleExactAlarms n'existe qu'à partir d'API 31 : en dessous,
+        // les alarmes exactes sont toujours autorisées (permission install-time).
+        if (Build.VERSION.SDK_INT < 31) {
+            ret.put("status", "granted");
+            call.resolve(ret);
+            return;
+        }
         try {
             android.app.AlarmManager am = (android.app.AlarmManager) getContext().getSystemService(android.content.Context.ALARM_SERVICE);
             ret.put("status", am != null && am.canScheduleExactAlarms() ? "granted" : "denied");
-        } catch (Exception e) {
+        } catch (Throwable t) {
             ret.put("status", "unknown");
         }
         call.resolve(ret);
@@ -76,6 +106,16 @@ public class WakeAlarmPlugin extends Plugin {
         try {
             Intent i = new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM);
             i.setData(android.net.Uri.parse("package:" + getContext().getPackageName()));
+            getContext().startActivity(i);
+        } catch (Exception ignored) {}
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void openNotificationSettings(PluginCall call) {
+        try {
+            Intent i = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName());
             getContext().startActivity(i);
         } catch (Exception ignored) {}
         call.resolve();

@@ -5,7 +5,7 @@ import { SOUNDS } from "./AlarmEditor";
 import { previewSound } from "../lib/audio";
 import {
   isNative, pendingNotifications, notificationPermission, exactAlarmStatus,
-  openExactAlarmSettings, scheduleTestNotification, type PendingInfo,
+  openExactAlarmSettings, openNotificationSettings, scheduleTestNotification, type PendingInfo,
 } from "../lib/nativeAlarms";
 import type { TKey } from "../lib/i18n";
 import { cn } from "../utils/cn";
@@ -40,6 +40,9 @@ function NativeDiagnostics({ t }: { t: (k: TKey) => string }) {
             {t("allowExactBtn")}
           </button>
         </div>
+        <button onClick={() => void openNotificationSettings()} className="mt-2 w-full rounded-xl border border-[var(--line)] px-3 py-2.5 text-xs font-bold">
+          {t("notifSettingsBtn")}
+        </button>
         <p className="mt-3 text-xs leading-snug text-[var(--muted)]">{t("diagHelp")}</p>
       </Card>
     </Field>
