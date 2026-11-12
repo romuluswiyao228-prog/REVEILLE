@@ -17,8 +17,9 @@ import Settings from "./screens/Settings";
 import Paywall from "./screens/Paywall";
 import Privacy from "./screens/Privacy";
 import { stopAlarmSound, unlockAudio } from "./lib/audio";
+import { ensureNotifyPermission, notifyAlarm } from "./lib/webNotify";
 import {
-  isNative, initNativeAlarms, startupChecks, resyncAlarms, setNativeAlarmsRef, firedOnce,
+  isNative, initNativeAlarms, startupChecks, resyncAlarms, setNativeAlarmsRef, setNativeHistoryRef, firedOnce,
 } from "./lib/nativeAlarms";
 import { computeBadges, computeStats, dateKey } from "./lib/stats";
 import type { HistoryEntry } from "./lib/types";
@@ -81,6 +82,7 @@ function Shell() {
         if (fired.current === key) continue;
         fired.current = key;
         if (a.days.length === 0) toggleAlarm(a.id);
+        notifyAlarm(a);
         setOverlay({ k: "block", alarmId: a.id });
         return;
       }
@@ -94,7 +96,14 @@ function Shell() {
     if (!isNative()) return;
     setNativeAlarmsRef(alarms);
     void initNativeAlarms(nativeHooks);
-    void startupChecks(alarms, history, nativeHooks);
+    void startupChecks(alarms, history, nativeHooks).then(() => {
+      // Alarme "une seule fois" déclenchée app fermée : détectée par syncNativeAlarms
+      // pendant startupChecks → on la désactive (le hook n'était jamais appelé).
+      for (const id of [...firedOnce]) {
+        firedOnce.delete(id);
+        nativeHooks.onOneShotFired(id);
+      }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -114,6 +123,11 @@ function Shell() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [alarms]);
+
+  // Historique à jour pour checkMissed (règle des 30 min) au retour premier plan.
+  useEffect(() => {
+    if (isNative()) setNativeHistoryRef(history);
+  }, [history]);
 
   // Restaure une alarme bloquante en cours après rechargement de la page.
   useEffect(() => {
@@ -270,6 +284,7 @@ export default function App() {
   useEffect(() => {
     const handler = () => {
       unlockAudio();
+      void ensureNotifyPermission();
       window.removeEventListener("pointerdown", handler);
       window.removeEventListener("keydown", handler);
     };

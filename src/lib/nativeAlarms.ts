@@ -246,13 +246,17 @@ export async function initNativeAlarms(hooks: NativeAlarmHooks) {
 
   // Retour au premier plan : vérifie les alarmes manquées (< 30 min, non terminées).
   await App.addListener("appStateChange", ({ isActive }) => {
-    if (isActive) void checkMissed(alarmsRef.current, hooks);
+    if (isActive) void checkMissed(alarmsRef.current, hooks, historyRef.current);
   });
 }
 
 const alarmsRef: { current: Alarm[] } = { current: [] };
+const historyRef: { current: HistoryEntry[] } = { current: [] };
 export function setNativeAlarmsRef(alarms: Alarm[]) {
   alarmsRef.current = alarms;
+}
+export function setNativeHistoryRef(history: HistoryEntry[]) {
+  historyRef.current = history;
 }
 
 async function checkMissed(alarms: Alarm[], hooks: NativeAlarmHooks, history: HistoryEntry[] = []) {
