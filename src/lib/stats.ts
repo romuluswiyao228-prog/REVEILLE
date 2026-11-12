@@ -19,8 +19,11 @@ export interface Stats {
   weekReps: number;
   monthReps: number;
   rate: number; // 0..100
-  total: number;
+  total: number; // nombre de séances
   pushupTotal: number;
+  squatTotal: number;
+  bestPushup: number; // record de répétitions sur une série, par exercice
+  bestSquat: number;
   successDays: number;
   last7: { key: string; day: number; reps: number }[];
 }
@@ -56,10 +59,19 @@ export function computeStats(history: HistoryEntry[], now = new Date()): Stats {
   let weekReps = 0;
   let monthReps = 0;
   let pushupTotal = 0;
+  let squatTotal = 0;
+  let bestPushup = 0;
+  let bestSquat = 0;
   for (const h of history) {
     if (h.date >= weekStart) weekReps += h.reps;
     if (h.date >= monthStart) monthReps += h.reps;
-    if (h.exercise === "pushup") pushupTotal += h.reps;
+    if (h.exercise === "pushup") {
+      pushupTotal += h.reps;
+      bestPushup = Math.max(bestPushup, h.reps);
+    } else {
+      squatTotal += h.reps;
+      bestSquat = Math.max(bestSquat, h.reps);
+    }
   }
   const final = history.filter((h) => h.method !== "postponed");
   const rate = final.length ? Math.round((final.filter((h) => h.success).length / final.length) * 100) : 0;
@@ -74,7 +86,7 @@ export function computeStats(history: HistoryEntry[], now = new Date()): Stats {
     };
   });
 
-  return { current: cur, best, weekReps, monthReps, rate, total: history.length, pushupTotal, successDays: okDays.size, last7 };
+  return { current: cur, best, weekReps, monthReps, rate, total: history.length, pushupTotal, squatTotal, bestPushup, bestSquat, successDays: okDays.size, last7 };
 }
 
 export interface BadgeState {

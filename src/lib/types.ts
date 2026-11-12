@@ -10,6 +10,7 @@ export interface Alarm {
   days: number[]; // 0 = dimanche … 6 = samedi ; [] = une seule fois
   label: string;
   sound: SoundId;
+  customSoundName?: string; // nom du fichier audio personnalisé (stocké dans IndexedDB)
   volume: number; // 0..1
   exercise: Exercise;
   reps: number; // 5..50

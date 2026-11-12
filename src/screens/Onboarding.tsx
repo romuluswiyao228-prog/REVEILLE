@@ -11,7 +11,7 @@ const langs: { id: Lang; label: string }[] = [
 ];
 
 export default function Onboarding({ onDone }: { onDone: () => void }) {
-  const { t, settings, setSettings } = useStore();
+  const { t, settings, setSettings, profile, setProfile } = useStore();
   const [i, setI] = useState(0);
   const [camMsg, setCamMsg] = useState<string | null>(null);
 
@@ -67,6 +67,15 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         </div>
         <h1 className="text-3xl font-black leading-tight tracking-tight">{s.title}</h1>
         <p className="mt-4 max-w-xs text-base leading-relaxed text-[var(--muted)]">{s.desc}</p>
+        {i === 2 && (
+          <input
+            value={profile.name}
+            maxLength={30}
+            onChange={(e) => setProfile({ name: e.target.value })}
+            placeholder={t("profileNamePh")}
+            className="mt-6 min-h-14 w-full max-w-xs rounded-2xl border border-[var(--line)] bg-[var(--card)] px-4 text-base font-semibold outline-none focus:border-[var(--accent)]"
+          />
+        )}
         {i === 2 && camMsg && <p className="mt-4 text-sm font-semibold text-[var(--warn)]">{camMsg}</p>}
       </div>
 

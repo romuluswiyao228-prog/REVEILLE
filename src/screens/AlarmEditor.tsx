@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Button, Card, Field, Header, Icon, Segmented } from "../components/ui";
 import { uid, useStore } from "../lib/store";
 import type { Alarm, SoundId } from "../lib/types";
 import type { TKey } from "../lib/i18n";
 import { previewSound } from "../lib/audio";
+import { saveCustomSound, getCustomSoundUrl, deleteCustomSound } from "../lib/customSounds";
 import { cn } from "../utils/cn";
 
 export const SOUNDS: { id: SoundId; premium: boolean }[] = [
@@ -17,6 +18,7 @@ export const SOUNDS: { id: SoundId; premium: boolean }[] = [
 export default function AlarmEditor({ id, onClose, onPremium }: { id?: string; onClose: () => void; onPremium: () => void }) {
   const { t, alarms, settings, saveAlarm, removeAlarm } = useStore();
   const existing = alarms.find((a) => a.id === id);
+  const existingCustomSoundName = existing?.customSoundName;
   const [a, setA] = useState<Alarm>(
     existing ?? {
       id: uid(),
@@ -24,6 +26,7 @@ export default function AlarmEditor({ id, onClose, onPremium }: { id?: string; o
       days: [1, 2, 3, 4, 5],
       label: "",
       sound: settings.sound,
+      customSoundName: existingCustomSoundName,
       volume: settings.volume,
       exercise: "pushup",
       reps: 10,
@@ -32,14 +35,122 @@ export default function AlarmEditor({ id, onClose, onPremium }: { id?: string; o
     },
   );
   const [err, setErr] = useState("");
+  const [customFile, setCustomFile] = useState<File | null>(null);
+  const [customUrl, setCustomUrl] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [customError, setCustomError] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const customUrlRef = useRef<string | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
   const set = (p: Partial<Alarm>) => setA((x) => ({ ...x, ...p }));
 
   const toggleDay = (d: number) => set({ days: a.days.includes(d) ? a.days.filter((x) => x !== d) : [...a.days, d].sort() });
 
-  const save = () => {
+  const setCustomUrlSafe = (url: string | null) => {
+    if (customUrlRef.current) URL.revokeObjectURL(customUrlRef.current);
+    customUrlRef.current = url;
+    setCustomUrl(url);
+  };
+
+  const stopPreview = () => {
+    previewAudioRef.current?.pause();
+    previewAudioRef.current = null;
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+    setPreviewing(false);
+  };
+
+  useEffect(
+    () => () => {
+      stopPreview();
+      if (customUrlRef.current) URL.revokeObjectURL(customUrlRef.current);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  const onFile = (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    if (f.size > 10 * 1024 * 1024) {
+      setCustomError(t("musicTooLarge"));
+      return;
+    }
+    if (f.size === 0) {
+      setCustomError(t("musicInvalid"));
+      return;
+    }
+    setCustomError("");
+    stopPreview();
+    setCustomFile(f);
+    setCustomUrlSafe(URL.createObjectURL(f));
+    set({ customSoundName: f.name });
+  };
+
+  const togglePreview = async () => {
+    if (previewing) {
+      stopPreview();
+      return;
+    }
+    let url = customUrl;
+    let owned = false;
+    if (!url && existing?.id) {
+      url = await getCustomSoundUrl(existing.id);
+      owned = true;
+      if (!url) {
+        setCustomError(t("musicNotFound"));
+        return;
+      }
+    }
+    if (!url) return;
+    const audio = new Audio(url);
+    audio.loop = true;
+    audio.volume = 1;
+    audio.onended = () => setPreviewing(false);
+    audio.onerror = () => {
+      setCustomError(t("musicInvalid"));
+      setPreviewing(false);
+    };
+    previewAudioRef.current = audio;
+    previewUrlRef.current = owned ? url : null;
+    try {
+      await audio.play();
+      setPreviewing(true);
+    } catch {
+      setCustomError(t("musicInvalid"));
+    }
+  };
+
+  const removeCustom = () => {
+    stopPreview();
+    setCustomFile(null);
+    setCustomUrlSafe(null);
+    set({ customSoundName: undefined });
+    setCustomError("");
+  };
+
+  const save = async () => {
     if (!existing && !settings.premium && alarms.length >= 3) {
       setErr(t("limitAlarms"));
       return;
+    }
+    if (customFile) {
+      try {
+        await saveCustomSound(a.id, customFile);
+      } catch {
+        setCustomError(t("musicInvalid"));
+        return;
+      }
+    } else if (!a.customSoundName && existing?.customSoundName) {
+      try {
+        await deleteCustomSound(a.id);
+      } catch {
+        /* ignore */
+      }
     }
     saveAlarm(a);
     onClose();
@@ -168,6 +279,38 @@ export default function AlarmEditor({ id, onClose, onPremium }: { id?: string; o
           </div>
         </Field>
 
+        <Field label={t("customSound")}>
+          <div className="space-y-2">
+            <input ref={fileRef} type="file" accept="audio/*" className="hidden" onChange={onFile} />
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="flex min-h-14 w-full items-center gap-3 rounded-2xl border border-[var(--line)] bg-[var(--card)] px-4 text-start font-semibold"
+            >
+              <Icon name="sound" className="text-[var(--accent)]" />
+              <span className="flex-1 truncate">{a.customSoundName || t("chooseMusic")}</span>
+            </button>
+            {a.customSoundName && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => void togglePreview()}
+                  className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--card)] px-4 font-bold"
+                >
+                  <Icon name={previewing ? "pause" : "play"} size={18} />
+                  {previewing ? t("stop") : t("listen")}
+                </button>
+                <button
+                  onClick={removeCustom}
+                  className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--card)] px-4 font-bold text-[var(--bad)]"
+                >
+                  <Icon name="trash" size={18} />
+                  {t("remove")}
+                </button>
+              </div>
+            )}
+            {customError && <p className="px-1 text-xs font-semibold text-[var(--bad)]">{customError}</p>}
+          </div>
+        </Field>
+
         <Field label={`${t("volume")} · ${Math.round(a.volume * 100)}%`}>
           <input type="range" min={0.1} max={1} step={0.05} value={a.volume} onChange={(e) => set({ volume: +e.target.value })} className="w-full" />
         </Field>
@@ -185,12 +328,14 @@ export default function AlarmEditor({ id, onClose, onPremium }: { id?: string; o
       </div>
 
       <div className="sticky bottom-0 space-y-2 border-t border-[var(--line)] bg-[var(--bg)]/95 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur">
-        <Button onClick={save}>{t("save")}</Button>
+        <Button onClick={() => void save()}>{t("save")}</Button>
         {existing && (
           <Button
             variant="danger"
             onClick={() => {
               if (confirm(t("confirmDelete"))) {
+                stopPreview();
+                void deleteCustomSound(a.id);
                 removeAlarm(a.id);
                 onClose();
               }

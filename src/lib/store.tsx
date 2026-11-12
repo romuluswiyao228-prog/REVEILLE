@@ -1,15 +1,23 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Alarm, HistoryEntry, Postponed, Settings } from "./types";
 import { translate, type TKey } from "./i18n";
-import { addDays, dateKey } from "./stats";
+import { dateKey } from "./stats";
+import { clearCustomSounds, deleteCustomSound } from "./customSounds";
 
-const KEY = "wakefit.v1";
+const KEY = "reveil:v2";
+// Anciennes clés contenant des données de test / de démo : purgées au démarrage.
+const LEGACY_KEYS = ["wakefit.v1"];
+
+interface Profile {
+  name: string;
+}
 
 interface Persisted {
   alarms: Alarm[];
   history: HistoryEntry[];
   settings: Settings;
   postponed: Postponed | null;
+  profile: Profile;
 }
 
 const defaultSettings: Settings = {
@@ -30,69 +38,38 @@ const defaultSettings: Settings = {
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
 
-function seed(): Persisted {
-  // Données de démonstration (une série en cours) pour que les statistiques soient parlantes.
-  const history: HistoryEntry[] = [];
-  const now = new Date();
-  for (let i = 1; i <= 9; i++) {
-    const d = addDays(now, -i);
-    const skip = i === 11;
-    if (skip) continue;
-    const reps = 10 + (i % 3) * 2;
-    history.push({
-      id: uid(),
-      ts: d.getTime(),
-      date: dateKey(d),
-      time: "07:00",
-      exercise: "pushup",
-      reps,
-      target: reps,
-      success: true,
-      method: "camera",
-      durationSec: 50 + i * 3,
-    });
-  }
-  const d12 = addDays(now, -12);
-  history.push({
-    id: uid(),
-    ts: d12.getTime(),
-    date: dateKey(d12),
-    time: "07:00",
-    exercise: "pushup",
-    reps: 4,
-    target: 10,
-    success: false,
-    method: "postponed",
-    durationSec: 30,
-  });
-  const alarms: Alarm[] = [
-    {
-      id: uid(),
-      time: "07:00",
-      days: [1, 2, 3, 4, 5],
-      label: "Travail",
-      sound: "sunrise",
-      volume: 0.8,
-      exercise: "pushup",
-      reps: 10,
-      difficulty: "normal",
-      enabled: true,
-    },
-  ];
-  return { alarms, history, settings: defaultSettings, postponed: null };
+/** État vierge : aucune donnée de démonstration. */
+function empty(): Persisted {
+  return { alarms: [], history: [], settings: { ...defaultSettings }, postponed: null, profile: { name: "" } };
+}
+
+function sanitize(p: Partial<Persisted>): Persisted {
+  const e = empty();
+  return {
+    alarms: Array.isArray(p.alarms) ? p.alarms : e.alarms,
+    history: Array.isArray(p.history) ? p.history : e.history,
+    settings: { ...e.settings, ...(p.settings ?? {}) },
+    postponed: p.postponed ?? null,
+    profile: { name: typeof p.profile?.name === "string" ? p.profile.name : "" },
+  };
 }
 
 function load(): Persisted {
+  // Purge des anciennes clés (données de test / versions précédentes).
+  for (const k of LEGACY_KEYS) {
+    try {
+      localStorage.removeItem(k);
+    } catch {
+      /* ignore */
+    }
+  }
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) {
-      const p = JSON.parse(raw) as Persisted;
-      return { ...p, settings: { ...defaultSettings, ...p.settings } };
-    }
+    if (raw) return sanitize(JSON.parse(raw) as Partial<Persisted>);
   } catch {
     /* ignore */
   }
-  return seed();
+  return empty();
 }
 
 interface Ctx extends Persisted {
@@ -103,8 +80,11 @@ interface Ctx extends Persisted {
   removeAlarm: (id: string) => void;
   toggleAlarm: (id: string) => void;
   setSettings: (patch: Partial<Settings>) => void;
+  setProfile: (patch: Partial<Profile>) => void;
   addHistory: (h: Omit<HistoryEntry, "id" | "ts" | "date">) => void;
   setPostponed: (p: Postponed | null) => void;
+  exportData: () => string;
+  importData: (raw: string) => boolean;
   reset: () => void;
 }
 
@@ -113,6 +93,11 @@ const StoreCtx = createContext<Ctx | null>(null);
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<Persisted>(load);
   const [ringing, setRinging] = useState<string | null>(null);
+
+  // Stockage durable si possible (données 100 % locales).
+  useEffect(() => {
+    void navigator.storage?.persist?.().catch(() => {});
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(KEY, JSON.stringify(data));
@@ -139,19 +124,56 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...d,
           alarms: d.alarms.some((x) => x.id === a.id) ? d.alarms.map((x) => (x.id === a.id ? a : x)) : [...d.alarms, a],
         })),
-      removeAlarm: (id) => setData((d) => ({ ...d, alarms: d.alarms.filter((x) => x.id !== id) })),
+      removeAlarm: (id) => {
+        void deleteCustomSound(id);
+        setData((d) => ({ ...d, alarms: d.alarms.filter((x) => x.id !== id) }));
+      },
       toggleAlarm: (id) =>
         setData((d) => ({ ...d, alarms: d.alarms.map((x) => (x.id === id ? { ...x, enabled: !x.enabled } : x)) })),
       setSettings: (patch) => setData((d) => ({ ...d, settings: { ...d.settings, ...patch } })),
+      setProfile: (patch) => setData((d) => ({ ...d, profile: { ...d.profile, ...patch } })),
       addHistory: (h) =>
         setData((d) => {
           const now = new Date();
           return { ...d, history: [{ ...h, id: uid(), ts: now.getTime(), date: dateKey(now) }, ...d.history] };
         }),
       setPostponed: (p) => setData((d) => ({ ...d, postponed: p })),
+      exportData: () =>
+        JSON.stringify({ app: "wakefit", version: 1, exportedAt: Date.now(), profile: data.profile, alarms: data.alarms, sessions: data.history }, null, 2),
+      importData: (raw) => {
+        try {
+          const o = JSON.parse(raw) as { app?: string; profile?: { name?: unknown }; alarms?: unknown; sessions?: unknown; history?: unknown };
+          if (o.app !== "wakefit" || !Array.isArray(o.alarms)) return false;
+          const sessions = (Array.isArray(o.sessions) ? o.sessions : Array.isArray(o.history) ? o.history : null) as HistoryEntry[] | null;
+          if (!sessions) return false;
+          const valid = sessions.filter(
+            (h) =>
+              h &&
+              typeof h.reps === "number" &&
+              typeof h.target === "number" &&
+              typeof h.exercise === "string" &&
+              (h.exercise === "pushup" || h.exercise === "squat") &&
+              typeof h.date === "string",
+          );
+          if (valid.length !== sessions.length) return false;
+          setData((d) => ({
+            ...d,
+            profile: { name: typeof o.profile?.name === "string" ? o.profile.name : "" },
+            alarms: o.alarms as Alarm[],
+            history: valid.map((h) => ({ ...h, id: h.id || uid(), ts: h.ts ?? Date.now() })),
+          }));
+          return true;
+        } catch {
+          return false;
+        }
+      },
       reset: () => {
-        const s = seed();
-        setData({ alarms: [], history: [], settings: { ...s.settings, ...data.settings }, postponed: null });
+        void clearCustomSounds();
+        setData((d) => ({
+          ...empty(),
+          // La langue et le thème sont conservés pour ne pas dérouter l'utilisateur.
+          settings: { ...defaultSettings, lang: d.settings.lang, theme: d.settings.theme },
+        }));
       },
     }),
     [data, t, ringing],

@@ -16,7 +16,7 @@ import Stats from "./screens/Stats";
 import Settings from "./screens/Settings";
 import Paywall from "./screens/Paywall";
 import Privacy from "./screens/Privacy";
-import { stopAlarmSound } from "./lib/audio";
+import { stopAlarmSound, unlockAudio } from "./lib/audio";
 import { computeBadges, computeStats, dateKey } from "./lib/stats";
 import type { HistoryEntry } from "./lib/types";
 import { cn } from "./utils/cn";
@@ -220,6 +220,21 @@ export default function App() {
   // pour que la détection soit prête dès la première alarme.
   useEffect(() => {
     void getPoseLandmarker();
+  }, []);
+
+  // Débloque l'audio au premier geste utilisateur (politique autoplay).
+  useEffect(() => {
+    const handler = () => {
+      unlockAudio();
+      window.removeEventListener("pointerdown", handler);
+      window.removeEventListener("keydown", handler);
+    };
+    window.addEventListener("pointerdown", handler);
+    window.addEventListener("keydown", handler);
+    return () => {
+      window.removeEventListener("pointerdown", handler);
+      window.removeEventListener("keydown", handler);
+    };
   }, []);
 
   return (

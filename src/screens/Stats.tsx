@@ -16,6 +16,7 @@ export default function Stats() {
     <div>
       <Header title={t("statsTitle")} />
       <div className="space-y-4 px-5 pb-6">
+        {history.length === 0 && <Card className="text-center text-[var(--muted)]">{t("emptySessions")}</Card>}
         <div className="grid grid-cols-2 gap-3">
           <Card className="!p-4">
             <div className="flex items-center gap-2 text-[var(--accent)]">
@@ -40,6 +41,29 @@ export default function Stats() {
             <div className="mt-1 text-sm font-semibold text-[var(--muted)]">{t("monthTotal")}</div>
           </Card>
         </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <Card className="!p-3 text-center">
+            <div className="tnum text-2xl font-black">{s.pushupTotal}</div>
+            <div className="mt-1 text-[11px] font-semibold text-[var(--muted)]">{t("statPushups")}</div>
+          </Card>
+          <Card className="!p-3 text-center">
+            <div className="tnum text-2xl font-black">{s.squatTotal}</div>
+            <div className="mt-1 text-[11px] font-semibold text-[var(--muted)]">{t("statSquats")}</div>
+          </Card>
+          <Card className="!p-3 text-center">
+            <div className="tnum text-2xl font-black">{s.total}</div>
+            <div className="mt-1 text-[11px] font-semibold text-[var(--muted)]">{t("statSessions")}</div>
+          </Card>
+        </div>
+
+        <Card className="!p-4">
+          <div className="text-sm font-bold uppercase tracking-wider text-[var(--muted)]">{t("statRecord")}</div>
+          <div className="mt-2 flex items-center justify-between text-lg font-extrabold">
+            <span>💪 {s.bestPushup} {t("pushup").toLowerCase()}</span>
+            <span>🦵 {s.bestSquat} {t("squat").toLowerCase()}</span>
+          </div>
+        </Card>
 
         <Card className="flex items-center gap-5">
           <ProgressRing value={s.rate / 100} size={96} stroke={10} color="var(--ok)">

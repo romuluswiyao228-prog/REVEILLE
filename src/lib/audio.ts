@@ -2,6 +2,9 @@ import type { SoundId } from "./types";
 
 let ctx: AudioContext | null = null;
 let timer: number | null = null;
+let customSource: AudioBufferSourceNode | null = null;
+let customGain: GainNode | null = null;
+let audioUnlocked = false;
 
 function getCtx(): AudioContext | null {
   try {
@@ -65,10 +68,67 @@ export function startAlarmSound(id: SoundId, volume: number) {
   timer = window.setInterval(() => playOnce(id, volume), patterns[id].period);
 }
 
+function stopCustom() {
+  try {
+    customSource?.stop();
+  } catch {
+    /* déjà arrêté */
+  }
+  try {
+    customSource?.disconnect();
+    customGain?.disconnect();
+  } catch {
+    /* ignore */
+  }
+  customSource = null;
+  customGain = null;
+}
+
+/** Joue un fichier audio personnalisé en boucle, volume maximal. */
+export async function startCustomAlarmSound(blob: Blob): Promise<boolean> {
+  stopAlarmSound();
+  const c = getCtx();
+  if (!c) return false;
+  try {
+    const buf = await c.decodeAudioData(await blob.arrayBuffer());
+    const src = c.createBufferSource();
+    const gain = c.createGain();
+    gain.gain.value = 1;
+    src.buffer = buf;
+    src.loop = true;
+    src.connect(gain).connect(c.destination);
+    src.start();
+    customSource = src;
+    customGain = gain;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function stopAlarmSound() {
   if (timer !== null) {
     clearInterval(timer);
     timer = null;
+  }
+  stopCustom();
+}
+
+/** Débloque l'audio au premier geste utilisateur (politique autoplay des navigateurs). */
+export function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  const c = getCtx();
+  if (!c) return;
+  try {
+    // Son muet d'une frame pour forcer le contexte en état "running".
+    const buf = c.createBuffer(1, 1, 22050);
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    src.connect(c.destination);
+    src.start();
+  } catch {
+    /* ignore */
   }
 }
 

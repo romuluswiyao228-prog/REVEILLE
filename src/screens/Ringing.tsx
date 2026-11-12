@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Button, Icon } from "../components/ui";
 import { useStore } from "../lib/store";
-import { audioRunning, startAlarmSound, vibrate } from "../lib/audio";
+import { audioRunning, vibrate } from "../lib/audio";
+import { startAlarmPlayback } from "../lib/alarmPlayback";
 import { dateKey } from "../lib/stats";
 import type { Alarm } from "../lib/types";
 
@@ -12,7 +13,7 @@ export default function Ringing({ alarm, onStart, onSnooze }: { alarm: Alarm; on
   const snoozeAvailable = settings.emergencySnoozeDate !== dateKey(new Date());
 
   useEffect(() => {
-    startAlarmSound(alarm.sound, alarm.volume);
+    void startAlarmPlayback(alarm);
     const check = setTimeout(() => setBlocked(!audioRunning()), 400);
     const clock = setInterval(() => setNow(new Date()), 1000);
     const vib = setInterval(() => vibrate([400, 200, 400]), 1500);
@@ -22,10 +23,10 @@ export default function Ringing({ alarm, onStart, onSnooze }: { alarm: Alarm; on
       clearInterval(vib);
       // le son continue pendant la mission : il est arrêté par l'écran suivant
     };
-  }, [alarm.sound, alarm.volume]);
+  }, [alarm]);
 
   const enableSound = () => {
-    startAlarmSound(alarm.sound, alarm.volume);
+    void startAlarmPlayback(alarm);
     setBlocked(false);
   };
 

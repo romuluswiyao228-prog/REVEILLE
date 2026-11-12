@@ -6,7 +6,8 @@ import { RepCounter, buildConfig, type Feedback } from "../lib/repCounter";
 import type { Skeleton } from "../lib/poseSim";
 import { detectPose, getPoseLandmarker } from "../lib/poseDetector";
 import type { PoseLandmarker } from "@mediapipe/tasks-vision";
-import { audioRunning, startAlarmSound, stopAlarmSound, vibrate, playRepTick } from "../lib/audio";
+import { audioRunning, stopAlarmSound, vibrate, playRepTick } from "../lib/audio";
+import { startAlarmPlayback } from "../lib/alarmPlayback";
 import { clearActiveAlarm, loadActiveAlarm, saveActiveAlarm } from "../lib/activeAlarm";
 import type { Alarm } from "../lib/types";
 import { cn } from "../utils/cn";
@@ -83,7 +84,7 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
   // Caméra et modèle de pose chargés en parallèle, avec préchauffage par une
   // inférence à blanc dès que les deux sont prêts.
   useEffect(() => {
-    startAlarmSound(alarm.sound, 1);
+    void startAlarmPlayback(alarm, 1);
     const check = setTimeout(() => setBlocked(!audioRunning()), 400);
     const clock = setInterval(() => setElapsed((e) => e + 1), 1000);
     const vib = setInterval(() => vibrate([400, 200, 400]), 1500);
@@ -230,7 +231,7 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
   }, [counter, alarm.exercise, alarm.id, target]);
 
   const enableSound = () => {
-    startAlarmSound(alarm.sound, 1);
+    void startAlarmPlayback(alarm, 1);
     setBlocked(false);
   };
 
