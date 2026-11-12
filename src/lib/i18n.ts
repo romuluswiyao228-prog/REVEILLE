@@ -101,7 +101,7 @@ const fr = {
   phase_down: "Bas",
 
   fb_out_of_frame: "Place-toi dans le cadre",
-  fb_get_in_position: "Mets-toi en position",
+  fb_get_in_position: "Mets-toi en position de pompe, de profil",
   fb_ready: "Prêt, descends",
   fb_go_lower: "Descends un peu plus",
   fb_push_up: "Remonte complètement",
@@ -114,6 +114,7 @@ const fr = {
   blockRepsLeft: "Pompes restantes : {x} / {n}",
   blockDoneTitle: "Bravo, alarme terminée",
   blockHome: "Retour à l'accueil",
+  poseTip: "Pose le téléphone au sol, de profil, à 1,5 à 2 m, corps entier visible",
   newBadge: "Nouveau badge",
   timeTaken: "Durée",
 
@@ -305,7 +306,7 @@ const en: Dict = {
   phase_down: "Down",
 
   fb_out_of_frame: "Get in the frame",
-  fb_get_in_position: "Get into position",
+  fb_get_in_position: "Get in push-up position, side-on",
   fb_ready: "Ready, go down",
   fb_go_lower: "Go a bit lower",
   fb_push_up: "Push all the way up",
@@ -318,6 +319,7 @@ const en: Dict = {
   blockRepsLeft: "Push-ups left: {x} / {n}",
   blockDoneTitle: "Well done, alarm finished",
   blockHome: "Back to home",
+  poseTip: "Place your phone on the floor, side-on, 1.5–2 m away, full body in frame",
   newBadge: "New badge",
   timeTaken: "Duration",
 
@@ -507,7 +509,7 @@ const ar: Dict = {
   phase_down: "أسفل",
 
   fb_out_of_frame: "ضع نفسك في الإطار",
-  fb_get_in_position: "خذ وضعية البداية",
+  fb_get_in_position: "خذ وضعية الضغط وأنتِ من الجانب",
   fb_ready: "جاهز، انزل",
   fb_go_lower: "انزل قليلاً أكثر",
   fb_push_up: "ارتفع بالكامل",
@@ -520,6 +522,7 @@ const ar: Dict = {
   blockRepsLeft: "تمارين الضغط المتبقية: {x} / {n}",
   blockDoneTitle: "أحسنت، انتهى المنبه",
   blockHome: "العودة إلى الرئيسية",
+  poseTip: "ضع هاتفك على الأرض من جانبك على بعد 1.5–2 م، جسمك كامل في الإطار",
   newBadge: "شارة جديدة",
   timeTaken: "المدة",
 

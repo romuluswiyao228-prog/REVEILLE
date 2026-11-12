@@ -39,6 +39,8 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
   const [camState, setCamState] = useState<"on" | "error">("on");
   const [done, setDone] = useState(false);
   const [blocked, setBlocked] = useState(false);
+  const DEBUG = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug");
+  const [dbg, setDbg] = useState({ angle: 0, phase: "-", side: "-" });
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<PoseLandmarker | null>(null);
@@ -129,17 +131,20 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
       const video = videoRef.current;
       const detector = detectorRef.current;
       let skel: Skeleton | null = null;
+      let sideUsed = "-";
       const sample: PoseSample = { angle: 0, confidence: 0, aligned: false, t };
       if (camState === "on" && detector && video && video.readyState >= 2) {
         const d = detectPose(detector, video, t, alarm.exercise);
         if (d) {
           skel = d.sk;
+          sideUsed = d.side;
           Object.assign(sample, d.sample);
         }
       }
       const rep = counter.update(sample);
       setSk(skel);
       setFeedback(counter.feedback);
+      if (DEBUG) setDbg({ angle: Math.round(sample.angle), phase: counter.phase, side: sideUsed });
       const vis = sample.confidence >= counter.cfg.minConfidence;
       if (vis !== lastVisible) {
         lastVisible = vis;
@@ -238,6 +243,11 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
           )}
         </svg>
 
+        {DEBUG && (
+          <div className="absolute left-3 top-3 z-10 rounded-lg bg-black/70 px-2 py-1 font-mono text-[10px] font-bold text-[var(--ok)]">
+            coude {dbg.angle}° · {dbg.phase} · {dbg.side}
+          </div>
+        )}
         {blocked && (
           <div className="absolute inset-x-3 top-3 rounded-2xl bg-[var(--warn)]/90 px-3 py-2 text-center text-sm font-bold text-black">
             🔇 {t("soundBlocked")}
@@ -257,6 +267,7 @@ export default function BlockingAlarm({ alarm, onDone }: { alarm: Alarm; onDone:
           {t(`fb_${feedback}`)}
         </div>
       </div>
+      <p className="relative px-6 pt-2 text-center text-[11px] font-semibold text-[var(--muted)]">{t("poseTip")}</p>
 
       {/* compteur central */}
       <div className="relative flex flex-1 flex-col items-center justify-center gap-4 px-5 py-4">

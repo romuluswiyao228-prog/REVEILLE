@@ -103,6 +103,6 @@ export function synth(t: number, exercise: Exercise, mode: SimMode, periodMs = 2
       : { hip: kp, knee: kp, ankle: kp };
   return {
     sk,
-    sample: { angle, confidence: out ? 0.1 : 0.92, aligned, t, keypoints },
+    sample: { angle, confidence: out ? 0.1 : 0.92, aligned, t, keypoints, bodyOk: exercise === "pushup" ? aligned : true },
   };
 }
